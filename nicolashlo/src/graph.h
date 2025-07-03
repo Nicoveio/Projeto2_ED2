@@ -2,6 +2,7 @@
 #define _GRAPH__
 
 #include "lista.h"
+#include "stdbool.h"
 
 /*
 Um Grafo  G e' constituido por um conjunto de vertices V e 
@@ -26,33 +27,54 @@ E' expressamente proibido o uso de ferramentas de IA para a sua implementacao.
 A documentacao deste modulo deve ser melhorada.
 */
 
-
+/*
+ Ponteiro opaco para a estrutura do grafo. 
+ O uso de 'void *' esconde os detalhes da implementação, uma prática
+ [cite_start]de encapsulamento conhecida como "Information Hiding"[cite: 281].
+ */
 typedef void *Graph;
+
+/*
+  Define um 'Nó' (ou vértice) do grafo como um número inteiro.
+  É usado como um identificador único para cada vértice.
+ */
 typedef int Node;
+
+/*
+  Ponteiro opaco para a estrutura de uma aresta.
+ */
 typedef void *Edge;
+
+/*
+  Ponteiro genérico usado para associar qualquer tipo de informação
+  customizada a um nó ou a uma aresta do grafo.
+ */
 typedef void *Info;
 
-#define CRITERIO_DISTANCIA 0
-#define CRITERIO_TEMPO 1
+
+// Constantes usadas para o critério de busca de caminho na função findPath.
+#define CRITERIO_DISTANCIA 0 // Para o caminho mais curto
+#define CRITERIO_TEMPO 1     // Para o caminho mais rápido
 
 
 /*
-  Invocado quando uma aresta é "descoberta"/"percorrida"/"classificada". 
-  Tambem informa os tempos de descoberta e finalizacao
+  Define um tipo de função de callback para ser usada quando uma aresta é
+  processada durante um percurso no grafo (como DFS ou BFS).
  */
-bool (*procEdge)(g,e,td,tf, void *extra); 
+typedef bool (*procEdgeCallback)(Graph g, Edge e, int td, int tf, void *extra); 
 
-/*
-  Invocado quando percurso e' recomecado
+/**
+  Define um tipo de função de callback para ser usada quando um percurso 
+  DFS reinicia a busca a partir de um novo vértice (formando uma nova árvore).
  */
-bool (*dfsRestarted)(g, void *extra);
+typedef bool (*dfsRestartedCallback)(Graph g, void *extra);
 
 
 
 /*
     Cria um grafo com, no maximo, "nVert" vertices.
  */
-Graph createGraph(nVert, bool directed);
+Graph createGraph(int nVert, bool directed);
 
 
 /*
@@ -62,7 +84,7 @@ int getMaxNodes(Graph g);
 
 
 /*
-    Retorna numero total de vertices adicionados ao grafo gr.
+    Retorna numero total de vertices adicionados ao grafo g.
  */
 int getTotalNodes(Graph g);
 
@@ -107,7 +129,7 @@ Edge addEdge( Graph g, Node from, Node to, Info info);
     Retorna a aresta associada a um nó origem e a um nó destino.
 
  */
-Edge getEdge(Node g, Node from, Node to);
+Edge getEdge(Graph g, Node from, Node to);
 
 
 /*
@@ -137,7 +159,7 @@ void setEdgeInfo(Graph g, Edge e, Info info);
 /*
    Remove a aresta 'e', é uma remoção com processo destrutivo permanente.
  */
-void removeEdge(g,e);
+void removeEdge(Graph g, Edge e);
 
 
 /*
@@ -149,14 +171,14 @@ bool isAdjacent(Graph g, Node from, Node to);
 /* 
    Adiciona 'a lista "nosAdjacentes" os nos adjacentes 'a "node".
  */
-void adjacentNodes(g, node, nosAdjacentes);
+void adjacentNodes(Graph g, Node node, Lista nosAdjacentes);
 
 
 /*
    Adiciona 'a lista "arestaAdjacentes" as arestas (x,y), tal que,
    x == node.
  */
-void adjacentEdges(g, node, Lista arestasAdjacentes);
+void adjacentEdges(Graph g, Node node, Lista arestasAdjacentes);
 
 
 /*
@@ -168,7 +190,7 @@ void  getNodeNames(Graph g, Lista nomesNodes);
 /*
    Insere na lista "arestas", as arestas de g.
  */
-void getEdges(g, Lista arestas);
+void getEdges(Graph g, Lista arestas);
 
 /*Modifica o estado temporariamente da aresta para 'desabilitada', sem removê-la 'fisicamente' do grafo. 
   Arestas nesse estado serão ignoradas por algoritmos de busca de caminho.*/
@@ -194,15 +216,15 @@ Lista findPath(Graph g, Node start, Node end, int criterio);
       A busca em profundidade, eventualmente, pode produzir uma floresta.
    newTree e' invocada sempre que o percurso for retomado.
  */  
-bool dfs(g, node, procEdge treeEdge, forwardEdge, returnEdge,
-	 crossEdge, newTree, void *extra);
+bool dfs(Graph g, Node node, procEdgeCallback treeEdge, procEdgeCallback forwardEdge, procEdgeCallback returnEdge,
+	 procEdgeCallback crossEdge, dfsRestartedCallback newTree, void *extra);
 
 
 /*
    Percorre o grafo g em largura, a partir do no' node. discoverNode e' usada
    para a aresta (x,y) usada para "descobrir" o y.
  */
-bool bfs(g, node, discoverNode, void *extra);
+bool bfs(Graph g, Node node, procEdgeCallback discoverNode, void *extra);
 
 
 /*
@@ -219,14 +241,14 @@ void killDG(Graph g);
 (nVerts e' o tamanho deste vetor). Caso comAresta seja true calcula o subgrafo 
 induzido pelos vertices em nomesVers
  */
-void  createSubgraphDG(g, char *nomeSubgrafo, char *nomesVerts[], int nVert,
+void  createSubgraphDG(Graph g, char *nomeSubgrafo, char *nomesVerts[], int nVert,
 		       bool comArestas);
 
 
 /*
     Adiciona a aresta ao subgrafo.
  */
-Edge includeEdgeSDG(g, char *nomeSubgrafo, e);
+Edge includeEdgeSDG(Graph g, char *nomeSubgrafo, Edge e);
 
 /*
   Retorna verdadeiro se a aresta "e" pertence ao subgrafo "nomeSubgrafo" do grafo g; 
@@ -270,7 +292,7 @@ void incomingEdgesSDG(Graph g, char *nomeSubgrafo, Node node, Lista arestasEntra
 /*
   Novo grafo.
  */
-Graph produceGraph(g, nomeSubgrafo);
+Graph produceGraph(Graph g, char* nomeSubgrafo);
 
 
 #endif
