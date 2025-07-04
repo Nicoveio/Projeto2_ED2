@@ -17,66 +17,50 @@ typedef struct HashTable_t {
     int size;       
 } HashTable_t;
 
+static unsigned long int hash_djb2(char *chave){
+    unsigned long hash = 5381;
+    int x;
+    while((x=*chave++)){
+        hash = ((hash<<5)+ hash) + x;
+    }
+    return hash;
+}
+
+static int balde_index(char*chave, int size){
+    return hash_djb2(chave) % size;
+}
 
 
 int main() {
-    printf("--- Iniciando Testes para o Módulo de Tabela Hash ---\n\n");
-
-
-    printf("Teste 1: Tentando criar tabela com tamanho 157...\n");
-    int tamanho_teste = 157;
-    hashTable ht = createHashTable(tamanho_teste);
-
-    if (ht == NULL) {
-        printf("  [FALHOU] createHashTable() retornou NULL para um tamanho válido.\n");
-        return 1; // Termina o programa com erro
-    }
-    printf("  [OK] createHashTable() retornou um ponteiro válido.\n");
-
-    
-    HashTable_t* ht_interno = (HashTable_t*)ht;
-
- 
-    if (ht_interno->size != tamanho_teste) {
-        printf("  [FALHOU] Tamanho armazenado na tabela (%d) é diferente do esperado (%d).\n", ht_interno->size, tamanho_teste);
-    } else {
-        printf("  [OK] Tamanho da tabela foi armazenado corretamente.\n");
-    }
-
- 
-    if (ht_interno->table == NULL) {
-        printf("  [FALHOU] O array de buckets (table) está nulo.\n");
-    } else {
-        printf("  [OK] O array de buckets (table) foi alocado.\n");
-
-        int i;
-        for (i = 0; i < tamanho_teste; i++) {
-            if (ht_interno->table[i] != NULL) {
-                printf("  [FALHOU] O bucket %d não foi inicializado como NULL.\n", i);
-                break; 
-            }
-        }
-        if (i == tamanho_teste) {
-            printf("  [OK] Todos os %d buckets foram inicializados como NULL.\n", tamanho_teste);
-        }
-    }
+   printf("--- Iniciando Testes para as Funções de Hashing ---\n\n");
 
   
+    const char* chaves_teste[] = {"v10", "v20", "na", "nb", "uma_chave_muito_longa_para_ver_o_que_acontece", "v10", ""};
+    int num_chaves = 7;
+    int tamanho_tabela = 157; 
 
-    // Teste com tamanho zero
-    ht = createHashTable(0);
-    if (ht == NULL) {
-        printf("  [OK] createHashTable(0) retornou NULL como esperado.\n");
-    } else {
-        printf("  [FALHOU] createHashTable(0) deveria retornar NULL.\n");
-    }
+    printf("Tamanho da tabela para o teste de índice: %d\n\n", tamanho_tabela);
 
-    // Teste com tamanho negativo
-    ht = createHashTable(-10);
-    if (ht == NULL) {
-        printf("  [OK] createHashTable(-10) retornou NULL como esperado.\n");
-    } else {
-        printf("  [FALHOU] createHashTable(-10) deveria retornar NULL.\n");
+    for (int i = 0; i < num_chaves; i++) {
+        const char* chave_atual = chaves_teste[i];
+
+        // teste da função hash_djb2
+        unsigned long hash_calculado = hash_djb2((char*)chave_atual);
+
+        // teste a função balde_index
+        int indice_calculado = balde_index((char*)chave_atual, tamanho_tabela);
+
+        printf("Chave: \"%s\"\n", chave_atual);
+        printf("  -> Hash DJB2: %lu\n", hash_calculado);
+        printf("  -> Índice do Balde: %d\n", indice_calculado);
+
+        // verificação importante: 0 índice está dentro dos limites do array?
+        if (indice_calculado < 0 || indice_calculado >= tamanho_tabela) {
+            printf("  [FALHOU] O índice %d está fora dos limites da tabela (0 a %d)!\n", indice_calculado, tamanho_tabela - 1);
+        } else {
+            printf("  [OK] O índice está dentro dos limites da tabela.\n");
+        }
+        printf("\n");
     }
 
     printf("\n--- Testes Concluídos ---\n");

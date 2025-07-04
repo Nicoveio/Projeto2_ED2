@@ -1,6 +1,7 @@
 #ifndef _HASH__
 #define _HASH__
 #include <stdbool.h>
+#include <stdio.h>
 
 /* 
 Tipo opaco para a Tabela Hash, refere-se a estrutura da tabela. 

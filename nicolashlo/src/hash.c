@@ -30,3 +30,16 @@ hashTable createHashTable(int size){
 	ht->size = size;
 	return (void*)ht;
 }
+// procurei por um algoritmo de hash de strings eficaz, e encontrei o djb2 do Daniel J. Bernstein, matemático americano
+static unsigned long int hash_djb2(char *chave){
+	unsigned long hash = 5381;
+	int x;
+	while((x=*chave++)){
+		hash = ((hash<<5)+ hash) + x;
+	}
+	return hash;
+}
+
+static int balde_index(char*chave, int size){
+	return hash_djb2(chave) % size;
+}
