@@ -1,21 +1,21 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "hash.h"
-
+#include <stdbool.h>
+#include <string.h>
 
 // QUEBRANDO O TIPO OPACO (APENAS PARA ESTE TESTE)
+typedef struct Node {
+    char* chave;
+    int valor;
+    struct Node* prox;
+} Node;
 
-typedef struct Node_t {
-    char* key;
-    int value;
-    struct Node_t* next;
-} Node_t;
+typedef struct {
+    Node** balde;
+    int size;
+} tabelaHash;
 
-
-typedef struct HashTable_t {
-    Node_t** table; 
-    int size;       
-} HashTable_t;
 
 static unsigned long int hash_djb2(char *chave){
     unsigned long hash = 5381;
@@ -26,44 +26,69 @@ static unsigned long int hash_djb2(char *chave){
     return hash;
 }
 
-static int balde_index(char*chave, int size){
+int balde_index(char*chave, int size){
     return hash_djb2(chave) % size;
 }
-
-
 int main() {
-   printf("--- Iniciando Testes para as Funções de Hashing ---\n\n");
+    printf("--- Teste Completo do Módulo de Tabela Hash ---\n\n");
 
-  
-    const char* chaves_teste[] = {"v10", "v20", "na", "nb", "uma_chave_muito_longa_para_ver_o_que_acontece", "v10", ""};
-    int num_chaves = 7;
-    int tamanho_tabela = 157; 
+    hashTable ht = createHashTable(13);
+    printf("[INFO] Tabela criada.\n");
 
-    printf("Tamanho da tabela para o teste de índice: %d\n\n", tamanho_tabela);
+    // --- Testando hashPut ---
+    printf("\n--- Inserindo elementos ---\n");
+    hashPut(ht, "v10", 10);
+    hashPut(ht, "v20", 20);
+    hashPut(ht, "ac", 100); // Colide com "p"
+    hashPut(ht, "p", 200);  // Colide com "ac"
+    printf("Inseridos: ('v10', 10), ('v20', 20), ('ac', 100), ('p', 200)\n");
 
-    for (int i = 0; i < num_chaves; i++) {
-        const char* chave_atual = chaves_teste[i];
-
-        // teste da função hash_djb2
-        unsigned long hash_calculado = hash_djb2((char*)chave_atual);
-
-        // teste a função balde_index
-        int indice_calculado = balde_index((char*)chave_atual, tamanho_tabela);
-
-        printf("Chave: \"%s\"\n", chave_atual);
-        printf("  -> Hash DJB2: %lu\n", hash_calculado);
-        printf("  -> Índice do Balde: %d\n", indice_calculado);
-
-        // verificação importante: 0 índice está dentro dos limites do array?
-        if (indice_calculado < 0 || indice_calculado >= tamanho_tabela) {
-            printf("  [FALHOU] O índice %d está fora dos limites da tabela (0 a %d)!\n", indice_calculado, tamanho_tabela - 1);
-        } else {
-            printf("  [OK] O índice está dentro dos limites da tabela.\n");
-        }
-        printf("\n");
+    // --- Testando hashGet ---
+    printf("\n--- Verificando com hashGet ---\n");
+    int valor;
+    if (hashGet(ht, "v20", &valor) && valor == 20) {
+        printf("  [OK] Chave 'v20' encontrada com valor %d.\n", valor);
+    } else {
+        printf("  [FALHOU] Erro ao buscar 'v20'.\n");
     }
 
-    printf("\n--- Testes Concluídos ---\n");
+    if (hashGet(ht, "p", &valor) && valor == 200) {
+        printf("  [OK] Chave 'p' (com colisão) encontrada com valor %d.\n", valor);
+    } else {
+        printf("  [FALHOU] Erro ao buscar 'p'.\n");
+    }
 
+    if (!hashGet(ht, "chave_inexistente", &valor)) {
+        printf("  [OK] Chave 'chave_inexistente' não foi encontrada, como esperado.\n");
+    } else {
+        printf("  [FALHOU] Chave 'chave_inexistente' foi encontrada incorretamente.\n");
+    }
+
+    // --- Testando hashRemove ---
+    printf("\n--- Verificando com hashRemove ---\n");
+    printf("Removendo 'p' (primeiro nó de uma lista com colisão)...\n");
+    hashRemove(ht, "p");
+
+    if (!hashGet(ht, "p", &valor)) {
+        printf("  [OK] Chave 'p' não foi mais encontrada.\n");
+    } else {
+        printf("  [FALHOU] Chave 'p' ainda existe após remoção.\n");
+    }
+
+    if (hashGet(ht, "ac", &valor) && valor == 100) {
+        printf("  [OK] Chave 'ac' (que estava na mesma lista) ainda existe.\n");
+    } else {
+        printf("  [FALHOU] Chave 'ac' foi afetada incorretamente pela remoção de 'p'.\n");
+    }
+
+    // --- Testando hashTableDestroy ---
+    printf("\n--- Verificando com hashDestroy ---\n");
+    hashTableDestroy(ht);
+    printf("  [OK] Tabela destruída. Use Valgrind para garantir que não há vazamento de memória.\n");
+
+
+    printf("\n--- Testes Concluídos ---");
     return 0;
 }
+
+
