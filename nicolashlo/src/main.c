@@ -3,6 +3,7 @@
 #include "hash.h"
 #include <stdbool.h>
 #include <string.h>
+#include "priority_queue.h"
 
 // QUEBRANDO O TIPO OPACO (APENAS PARA ESTE TESTE)
 typedef struct Node {
@@ -30,65 +31,90 @@ int balde_index(char*chave, int size){
     return hash_djb2(chave) % size;
 }
 int main() {
-    printf("--- Teste Completo do Módulo de Tabela Hash ---\n\n");
+    printf("--- Iniciando Testes para o Módulo de Fila de Prioridade ---\n\n");
 
-    hashTable ht = createHashTable(13);
-    printf("[INFO] Tabela criada.\n");
+    // --- Teste 1: Operações Básicas ---
+    printf("--- Teste 1: Testando criação e estado de fila vazia ---\n");
+    priorityQueue pq = createPriorityQueue(10);
 
-    // --- Testando hashPut ---
-    printf("\n--- Inserindo elementos ---\n");
-    hashPut(ht, "v10", 10);
-    hashPut(ht, "v20", 20);
-    hashPut(ht, "ac", 100); // Colide com "p"
-    hashPut(ht, "p", 200);  // Colide com "ac"
-    printf("Inseridos: ('v10', 10), ('v20', 20), ('ac', 100), ('p', 200)\n");
+    if (pq == NULL) {
+        printf("  [FALHOU] createPriorityQueue() retornou NULL.\n");
+        return 1;
+    }
+    printf("  [OK] Fila criada com sucesso.\n");
 
-    // --- Testando hashGet ---
-    printf("\n--- Verificando com hashGet ---\n");
-    int valor;
-    if (hashGet(ht, "v20", &valor) && valor == 20) {
-        printf("  [OK] Chave 'v20' encontrada com valor %d.\n", valor);
+    if (pq_empty(pq)) {
+        printf("  [OK] pq_empty() retornou 'true' para uma fila nova.\n");
     } else {
-        printf("  [FALHOU] Erro ao buscar 'v20'.\n");
+        printf("  [FALHOU] pq_empty() deveria retornar 'true' para uma fila nova.\n");
     }
 
-    if (hashGet(ht, "p", &valor) && valor == 200) {
-        printf("  [OK] Chave 'p' (com colisão) encontrada com valor %d.\n", valor);
+    printf("Inserindo o item 100 com prioridade 10.0...\n");
+    pq_insert(pq, 100, 10.0);
+
+    if (!pq_empty(pq)) {
+        printf("  [OK] pq_empty() retornou 'false' após uma inserção.\n");
     } else {
-        printf("  [FALHOU] Erro ao buscar 'p'.\n");
+        printf("  [FALHOU] pq_empty() deveria retornar 'false' após uma inserção.\n");
+    }
+    printf("\n");
+
+    // --- Teste 2: Ordem de Prioridade ---
+    printf("--- Teste 2: Verificando a ordem de extração (o teste principal) ---\n");
+    // Inserindo itens com prioridades fora de ordem
+    printf("Inserindo múltiplos itens com prioridades fora de ordem...\n");
+    pq_insert(pq, 20, 2.5);  // Maior prioridade
+    pq_insert(pq, 30, 15.0); // Menor prioridade
+    pq_insert(pq, 40, 5.0);  // Segunda maior prioridade
+
+    // A ordem esperada de extração é: 20 (p=2.5), 40 (p=5.0), 100 (p=10.0), 30 (p=15.0)
+    int ordem_esperada[] = {20, 40, 100, 30};
+    int itens_extraidos[4];
+    int i = 0;
+
+    printf("Extraindo todos os itens para verificar a ordem...\n");
+    while (!pq_empty(pq)) {
+        itens_extraidos[i] = pq_extract_min(pq);
+        printf("  Extraído: %d\n", itens_extraidos[i]);
+        i++;
     }
 
-    if (!hashGet(ht, "chave_inexistente", &valor)) {
-        printf("  [OK] Chave 'chave_inexistente' não foi encontrada, como esperado.\n");
-    } else {
-        printf("  [FALHOU] Chave 'chave_inexistente' foi encontrada incorretamente.\n");
+    // Compara a ordem extraída com a esperada
+    bool ordem_correta = true;
+    for (i = 0; i < 4; i++) {
+        if (itens_extraidos[i] != ordem_esperada[i]) {
+            ordem_correta = false;
+            break;
+        }
     }
 
-    // --- Testando hashRemove ---
-    printf("\n--- Verificando com hashRemove ---\n");
-    printf("Removendo 'p' (primeiro nó de uma lista com colisão)...\n");
-    hashRemove(ht, "p");
-
-    if (!hashGet(ht, "p", &valor)) {
-        printf("  [OK] Chave 'p' não foi mais encontrada.\n");
+    if (ordem_correta) {
+        printf("  [OK] Itens foram extraídos na ordem correta de prioridade.\n");
     } else {
-        printf("  [FALHOU] Chave 'p' ainda existe após remoção.\n");
+        printf("  [FALHOU] A ordem de extração está incorreta.\n");
     }
 
-    if (hashGet(ht, "ac", &valor) && valor == 100) {
-        printf("  [OK] Chave 'ac' (que estava na mesma lista) ainda existe.\n");
+    if (pq_empty(pq)) {
+        printf("  [OK] Fila está vazia após todas as extrações.\n");
     } else {
-        printf("  [FALHOU] Chave 'ac' foi afetada incorretamente pela remoção de 'p'.\n");
+        printf("  [FALHOU] Fila deveria estar vazia.\n");
+    }
+    printf("\n");
+
+    // --- Teste 3: Casos Especiais ---
+    printf("--- Teste 3: Extração de fila vazia ---\n");
+    int item_erro = pq_extract_min(pq);
+    if (item_erro == -1) {
+        printf("  [OK] pq_extract_min() em fila vazia retornou -1, como esperado.\n");
+    } else {
+        printf("  [FALHOU] pq_extract_min() em fila vazia deveria retornar -1.\n");
     }
 
-    // --- Testando hashTableDestroy ---
-    printf("\n--- Verificando com hashDestroy ---\n");
-    hashTableDestroy(ht);
-    printf("  [OK] Tabela destruída. Use Valgrind para garantir que não há vazamento de memória.\n");
+    // --- Limpeza Final ---
+    pq_destroy(pq);
+    printf("\n[INFO] Teste de destruição executado. Use Valgrind para checar vazamentos.\n");
+    printf("\n--- Testes Concluídos ---\n");
 
-
-    printf("\n--- Testes Concluídos ---");
     return 0;
 }
-
 

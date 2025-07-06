@@ -25,7 +25,7 @@ void pq_insert(priorityQueue pq, int item, double priority);
  (menor valor de 'priority' da fila, o 'extraindo'.
 */
 
-int pq_extract_ min(priorityQueue pq);
+int pq_extract_min(priorityQueue pq);
 
 /* 
  Verica se a fila de prioridade 'pq' está vazia/não contém elementos. 
