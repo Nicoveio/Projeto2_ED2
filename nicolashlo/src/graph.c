@@ -88,3 +88,39 @@ Graph createGraph(int nVert, bool directed, char* nomeGrafo){
 	}
 	return (Graph)g;
 }
+
+int getMaxNodes(Graph g){
+	Grafo *g0 = (Grafo*)g;
+	return g0->maxNos;
+}
+
+int getTotalNodes(Graph g){
+	Grafo *g0 = (Grafo*)g;
+	return g0->nosInseridos;
+}
+
+Node addNode(Graph g, char*nome, Info info){
+	if(!g || !nome || !info) exit(1);
+    Grafo* g0 = (Grafo*)g;
+    Coordenadas *coord = (Coordenadas*)info;
+    int valor;
+	bool verificador = hashGet(g0->nomeId, nome, &valor);
+	if(verificador==true){
+		free(info);
+		return valor; 
+	}
+	if(g0->nosInseridos >= g->maxNos){
+		printf("Grafo cheio");
+		exit(1);
+	}
+	int novoId = g0->nosInseridos;
+	insertSmuT(g0->localizacaoNos, coord->x, coord->y,(void*)(uintptr_t)novoId, 0, NULL);
+	g0->vertices[novoId].nome = strdup(nome);
+	g0->vertices[novoId].coord = coord;
+	g0->adjacencia[novoId] = lista_cria();
+
+	g0->nosInseridos++;
+	return novoId;
+
+
+}
