@@ -74,7 +74,7 @@ typedef bool (*dfsRestartedCallback)(Graph g, void *extra);
 /*
     Cria um grafo com, no maximo, "nVert" vertices.
  */
-Graph createGraph(int nVert, bool directed);
+Graph createGraph(int nVert, bool directed, char* nomeGrafo);
 
 
 /*
@@ -246,7 +246,7 @@ void  createSubgraphDG(Graph g, char *nomeSubgrafo, char *nomesVerts[], int nVer
 
 
 /*
-    Adiciona a aresta ao subgrafo.
+    Adiciona a aresta ao subgrafo.f
  */
 Edge includeEdgeSDG(Graph g, char *nomeSubgrafo, Edge e);
 
