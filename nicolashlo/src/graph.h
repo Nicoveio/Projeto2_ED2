@@ -69,6 +69,7 @@ typedef bool (*procEdgeCallback)(Graph g, Edge e, int td, int tf, void *extra);
  */
 typedef bool (*dfsRestartedCallback)(Graph g, void *extra);
 
+typedef double (*CalculaCustoAresta)(Info info_aresta, int criterio);
 
 
 /*
@@ -207,7 +208,7 @@ bool isEdgeEnabled(Graph g, Edge e);
 
 /* Calcula o melhor percurso entre nós baseado em um critério. Retorna uma lista com a sequência de nós do percurso. */
 
-Lista findPath(Graph g, Node start, Node end, int criterio);
+Lista findPath(Graph g, Node start, Node end, int criterio, CalculaCustoAresta funcCusto);
 
 
 /*
@@ -236,7 +237,6 @@ void killDG(Graph g);
  **********************
  * SUB-GRAFOS
  **********************
-/*
     Calcula o subgrafo composto  pelos vertices cujos nomes estao no vetor nomesVerts
 (nVerts e' o tamanho deste vetor). Caso comAresta seja true calcula o subgrafo 
 induzido pelos vertices em nomesVers

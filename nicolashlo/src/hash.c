@@ -1,15 +1,16 @@
 #include "hash.h"
 #include <stdlib.h>
 #include <string.h>
+#include "utils.h"
 
-typedef struct Node{
+typedef struct HashNode{
 	char* chave;
 	int valor;
-	struct Node* prox;
-}Node;
+	struct HashNode* prox;
+}HashNode;
 
 typedef struct{
-	Node** balde;
+	HashNode** balde;
 	int size;
 }tabelaHash;
 
@@ -20,7 +21,7 @@ hashTable createHashTable(int size){
 		printf("Erro de alocação de memória da tabela.\n");
 		exit(1);
 	}
-	ht->balde = (Node**)malloc(size*sizeof(Node*));
+	ht->balde = (HashNode**)malloc(size*sizeof(HashNode*));
 	if(!ht->balde){
 		printf("Erro de alocação de memória do balde.\n");
 		exit(1);
@@ -48,7 +49,7 @@ static int balde_index(const char*chave, int size){
 void hashPut(hashTable ht, const char * key, int value){
 	tabelaHash* ht0 = (tabelaHash*)ht;
 	int indice = balde_index(key, ht0->size);
-	Node* atual = ht0->balde[indice];
+	HashNode* atual = ht0->balde[indice];
 	while(atual){
 		if(strcmp(key, atual->chave)==0){
 			atual->valor = value;
@@ -56,12 +57,12 @@ void hashPut(hashTable ht, const char * key, int value){
 		}
 		atual=atual->prox;
 	}
-	Node* novo = (Node*)malloc(sizeof(Node));
+	HashNode* novo = (HashNode*)malloc(sizeof(HashNode));
 	if(!novo){
 		printf("Problema de alocação de memoria de nó na hashTable.");
 		exit(1);
 	}
-	novo->chave = strdup(key);
+	novo->chave = duplicar_string(key);
 	novo->valor = value;
 	novo->prox = ht0->balde[indice];
 	ht0->balde[indice] = novo;
@@ -72,7 +73,7 @@ bool hashGet(hashTable ht, const char*key, int* value){
 	if(!ht || !key || !value ) return false;
 	tabelaHash* ht0 = (tabelaHash*)ht;
 	int indice = balde_index(key, ht0->size);
-	Node* atual = ht0->balde[indice];
+	HashNode* atual = ht0->balde[indice];
 	while(atual){
 		if(strcmp(key, atual->chave)==0){
 			*value = atual->valor;
@@ -89,8 +90,8 @@ void hashRemove(hashTable ht, const char* key){
 	if(!ht || !key)return;
 	tabelaHash* ht0 = (tabelaHash*)ht;
 	int indice = balde_index(key, ht0->size);
-	Node* atual = ht0->balde[indice];
-	Node* anterior = NULL;
+	HashNode* atual = ht0->balde[indice];
+	HashNode* anterior = NULL;
 	while(atual){
 		if(strcmp(key, atual->chave)==0){
 			if(!anterior)
@@ -111,9 +112,9 @@ void hashTableDestroy(hashTable ht){
 	if(!ht) return;
 	tabelaHash* ht0 = (tabelaHash*)ht;
 	for(int i=0; i<ht0->size; i++){
-		Node* atual = ht0->balde[i];
+		HashNode* atual = ht0->balde[i];
 		while(atual){
-			Node* libera = atual;
+			HashNode* libera = atual;
 			atual = atual->prox;
 			free(libera->chave);
 			free(libera);
