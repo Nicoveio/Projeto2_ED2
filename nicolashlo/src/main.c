@@ -1,161 +1,97 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "hash.h"
-#include <stdbool.h>
 #include <string.h>
-#include "priority_queue.h"
-#include "graph.h"
-#include "lista.h"
-#include <math.h>
-#include <stdint.h>
-#include <float.h>
 
-#define INFINITO DBL_MAX
+#include "utils.h"      
+#include "via.h"       
+#include "graph.h"      
+#include "lista.h"     
 
-
-
-
-
-typedef struct {
-    Node** balde;
-    int size;
-} tabelaHash;
-
-
-static unsigned long int hash_djb2(char *chave){
-    unsigned long hash = 5381;
-    int x;
-    while((x=*chave++)){
-        hash = ((hash<<5)+ hash) + x;
+int main(int argc, char *argv[]) {
+    // -----------------------------------------------------------
+    // PASSO 1: LER E VALIDAR OS PARÂMETROS DE ENTRADA
+    // -----------------------------------------------------------
+    printf("1. Processando parâmetros da linha de comando...\n");
+    void* params = criarParametros();
+    if (!processarArgumentos(params, argc, argv)) {
+        destruirParametros(params);
+        return 1; // Termina se os parâmetros forem inválidos
     }
-    return hash;
-}
-
-int balde_index(char*chave, int size){
-    return hash_djb2(chave) % size;
-}
-
-typedef struct {
-    char* nome_rua;
-    double comprimento;
-    double velocidade_media;
-} InfoAresta;
-
-double minhaFuncaoDeCusto(Info info_aresta, int criterio) {
-    if (!info_aresta) return INFINITO;
-    InfoAresta* info = (InfoAresta*)info_aresta;
     
-    if (criterio == CRITERIO_DISTANCIA) {
-        return info->comprimento;
-    } else { // CRITERIO_TEMPO
-        if (info->velocidade_media > 0) {
-            return info->comprimento / info->velocidade_media;
-        }
-        return INFINITO;
-    }
-}
-
-typedef struct{
-    double x;
-    double y;
-}Coordenadas;
-
-
-int main() {
-  printf("--- Iniciando Teste Completo do Módulo Grafo ---\n\n");
-
-    // --- 1. Teste de Criação do Grafo ---
-    printf("--> PASSO 1: Criando o grafo para uma cidade com 6 cruzamentos...\n");
-    int num_vertices = 6;
-    Graph g = createGraph(num_vertices, true, "Bitnopolis_Teste");
-    if (!g) {
-        printf("  [FALHOU] createGraph retornou NULL.\n");
+    // Pega o caminho do arquivo .via, que é essencial para esta etapa
+    char* caminho_via = getCaminhoCompletoVia(params);
+    if (caminho_via == NULL) {
+        fprintf(stderr, "Erro: O parâmetro -v com o arquivo de vias (.via) é necessário para este teste.\n");
+        destruirParametros(params);
         return 1;
     }
-    printf("  [OK] Grafo criado com sucesso.\n\n");
+    printf("   -> Arquivo .via a ser processado: %s\n", caminho_via);
 
 
-    // --- 2. Teste de Adição de Vértices (addNode) ---
-    printf("--> PASSO 2: Adicionando 6 vértices (cruzamentos)...\n");
-    const char* nomes_v[] = {"v1", "v2", "v3", "v4", "v5", "v6"};
-    double coords_v[][2] = {{0,0}, {100,0}, {200,0}, {0,100}, {100,100}, {200,100}};
-    Node ids[num_vertices];
-
-    for (int i = 0; i < num_vertices; i++) {
-        // O main.c aloca a struct de Coordenadas
-        Coordenadas* c = malloc(sizeof(Coordenadas));
-        c->x = coords_v[i][0];
-        c->y = coords_v[i][1];
-        // e a passa para o grafo como um Info (void*)
-        ids[i] = addNode(g, (char*)nomes_v[i], c);
-        printf("  - addNode('%s') -> ID: %d\n", nomes_v[i], ids[i]);
+    // -----------------------------------------------------------
+    // PASSO 2: CARREGAR O GRAFO
+    // -----------------------------------------------------------
+    printf("\n2. Carregando o grafo a partir do arquivo .via...\n");
+    
+    // Chama a função do módulo 'via' para fazer todo o trabalho pesado
+    Graph g = carregarGrafoDeArquivoVia(caminho_via);
+    
+    if (g == NULL) {
+        fprintf(stderr, "   [FALHOU] Erro fatal ao carregar o grafo.\n");
+        free(caminho_via);
+        destruirParametros(params);
+        return 1;
     }
-    printf("  [OK] Vértices adicionados. Total de nós no grafo: %d\n\n", getTotalNodes(g));
+    printf("   [OK] Grafo carregado com sucesso!\n");
 
 
-    // --- 3. Teste de Adição de Arestas (addEdge) ---
-    printf("--> PASSO 3: Adicionando 7 arestas (ruas)...\n");
-    // (de, para, comprimento, velocidade)
-    double arestas_info[][4] = { {0,1, 100, 10}, {1,2, 100, 10}, {0,3, 100, 5},
-                                 {1,4, 100, 10}, {2,5, 100, 5}, {3,4, 100, 10}, {4,5, 100, 10} };
+    // -----------------------------------------------------------
+    // PASSO 3: SESSÃO DE TESTE E VERIFICAÇÃO
+    // -----------------------------------------------------------
+    printf("\n3. Verificando a integridade do grafo carregado...\n");
 
-    for (int i = 0; i < 7; i++) {
-        // O main.c aloca a struct InfoAresta
-        InfoAresta* info_a = malloc(sizeof(InfoAresta));
-        info_a->nome_rua = "Rua Teste"; // Apenas um nome genérico para o teste
-        info_a->comprimento = arestas_info[i][2];
-        info_a->velocidade_media = arestas_info[i][3];
+    // Teste 1: Verificar o número total de nós
+    int nos_lidos = getTotalNodes(g);
+    printf("   - Teste de Contagem de Nós: %d vértices foram carregados.\n", nos_lidos);
+
+    // Teste 2: Tenta encontrar um vértice conhecido
+    const char* vertice_teste = "beS.SE"; // Mude para um vértice que exista no seu .via
+    printf("   - Teste de Busca: Procurando pelo vértice '%s'...\n", vertice_teste);
+    Node id_teste = getNode(g, (char*)vertice_teste);
+    if (id_teste != -1) {
+        printf("     [OK] Vértice '%s' encontrado com ID: %d.\n", vertice_teste, id_teste);
+
+        // Teste 3: Listar as arestas que saem desse vértice
+        printf("   - Teste de Adjacência: Listando ruas que saem de '%s' (ID %d)...\n", vertice_teste, id_teste);
+        Lista arestas_vizinhas = lista_cria();
+        adjacentEdges(g, id_teste, arestas_vizinhas);
         
-        Node from_id = (Node)arestas_info[i][0];
-        Node to_id = (Node)arestas_info[i][1];
-        // e a passa para o grafo como um Info (void*)
-        addEdge(g, from_id, to_id, info_a);
-        printf("  - addEdge(%d -> %d) adicionada.\n", from_id, to_id);
-    }
-    printf("  [OK] Arestas adicionadas.\n\n");
+        int num_vizinhos = lista_tamanho(arestas_vizinhas);
+        printf("     -> Encontrado(s) %d segmento(s) de rua saindo deste ponto.\n", num_vizinhos);
+
+        if (num_vizinhos > 0) {
+            printf("     -> Destinos: ");
+            Iterador it = lista_iterador(arestas_vizinhas);
+            while (iterador_tem_proximo(it)) {
+                Edge aresta_opaca = (Edge)iterador_proximo(it);
+                Node id_destino = getToNode(g, aresta_opaca);
+                printf("%d ", id_destino);
+            }
+         printf("\n");
+         iterador_destroi(it);
+         lista_libera(arestas_vizinhas);
+
+    } else 
+        printf("     [FALHOU] Vértice '%s' não foi encontrado na tabela hash.\n", vertice_teste);
+ }
+
+    printf("\n4. Finalizando e liberando toda a memória...\n");
+    killDG(g);
+    free(caminho_via);
+    destruirParametros(params);
     
+    printf("   [OK] Memória liberada.\n\n");
+    printf("Execução de teste do .via concluída com sucesso!\n");
 
-    // --- 4. Teste de Busca de Caminho (findPath) ---
-    printf("--> PASSO 4: Testando findPath de v1 (ID 0) para v6 (ID 5)...\n");
-    Node inicio = ids[0];
-    Node fim = ids[5];
-
-    // a) Por Distância
-    printf("  - Buscando pelo caminho MAIS CURTO (distância)...\n");
-    // O main.c passa a "ferramenta" minhaFuncaoDeCusto para o grafo
-    Lista caminho_dist = findPath(g, inicio, fim, CRITERIO_DISTANCIA, minhaFuncaoDeCusto);
-    
-    printf("    Caminho encontrado: ");
-    Iterador it_dist = lista_iterador(caminho_dist);
-    while (iterador_tem_proximo(it_dist)) {
-        Node no_id = (Node)(uintptr_t)iterador_proximo(it_dist);
-        printf("%d ", no_id);
-    }
-    printf("\n");
-    iterador_destroi(it_dist);
-    // IMPORTANTE: O findPath retorna uma lista de IDs. A lista em si pode ser liberada.
-    lista_libera(caminho_dist);
-
-    // b) Por Tempo
-    printf("  - Buscando pelo caminho MAIS RÁPIDO (tempo)...\n");
-    Lista caminho_tempo = findPath(g, inicio, fim, CRITERIO_TEMPO, minhaFuncaoDeCusto);
-    
-    printf("    Caminho encontrado: ");
-    Iterador it_tempo = lista_iterador(caminho_tempo);
-    while (iterador_tem_proximo(it_tempo)) {
-        Node no_id = (Node)(uintptr_t)iterador_proximo(it_tempo);
-        printf("%d ", no_id);
-    }
-    printf("\n  [OK] Testes de findPath concluídos.\n\n");
-    iterador_destroi(it_tempo);
-    lista_libera(caminho_tempo);
-
-
-    // --- 5. Teste de Destruição do Grafo ---
-    killDG(g); 
-    printf("  [OK] Grafo destruído.\n\n");
-    
-    printf("--- Testes Concluídos ---\n");
     return 0;
 }
-

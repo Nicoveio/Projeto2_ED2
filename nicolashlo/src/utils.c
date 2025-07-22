@@ -9,6 +9,7 @@ typedef struct {
     char *arquivo_geo;      // -f (obrigatório)
     char *dir_saida;        // -o (obrigatório)
     char *arquivo_qry;      // -q (opcional)
+    char *arquivo_via;
     int prioridade_max;     // -p (opcional)
     int hit_count;          // -hc (opcional)
     double promotion_rate;  // -pr (opcional);
@@ -26,6 +27,7 @@ static int strcasecmp(const char *s1, const char *s2) {
 }
 
 // ========== FUNÇÕES AUXILIARES ESTÁTICAS ==========
+
 
 // Função para verificar se arquivo existe
 static int arquivo_existe(const char *caminho) {
@@ -187,6 +189,7 @@ static int processar_argumentos_interno(int argc, char *argv[], Parametros *para
                 fprintf(stderr, "Erro: -q requer um argumento\n");
                 return 0;
             }
+        
             
             // VERIFICAR EXTENSÃO .qry
             if (!verificar_extensao(argv[i + 1], ".qry")) {
@@ -241,6 +244,18 @@ static int processar_argumentos_interno(int argc, char *argv[], Parametros *para
             }
             params->promotion_rate = valor;
             i++;
+        }
+        else if (strcmp(argv[i], "-v") == 0) {
+             if (i + 1 >= argc) {
+                  fprintf(stderr, "Erro: -v requer um argumento\n");
+                  return 0;
+             }
+             params->arquivo_via = duplicar_string (argv[i + 1]);
+             if (!params->arquivo_via) {
+                  fprintf(stderr, "Erro: Falha na alocação de memória\n");
+                  return 0;
+              }
+             i++; // pular próximo argumento
         }
         else {
             fprintf(stderr, "Erro: Argumento desconhecido '%s'\n", argv[i]);
@@ -326,7 +341,15 @@ static int validar_parametros_interno(Parametros *params) {
 }
 
 // ========== FUNÇÕES PÚBLICAS DO TAD ==========
-
+char* duplicar_string(const char* s){
+    size_t tamanho = strlen(s) + 1;
+    char* nova_string = malloc(tamanho);
+    if (nova_string == NULL) {
+        return NULL;
+    }
+    strcpy(nova_string, s);
+    return nova_string;
+}
 // Criar novo objeto Parametros
 void* criarParametros() {
     Parametros *params = malloc(sizeof(Parametros));
@@ -548,7 +571,8 @@ char* getCaminhoDotConsulta(void *parametros) {
     char *nome_base_geo = extrair_nome_base(params->arquivo_geo);
     char *nome_base_qry = extrair_nome_base(params->arquivo_qry);
     
-    if (!nome_base_geo || !nome_base_qry) { /* ... tratamento de erro ... */ return NULL; }
+    if (!nome_base_geo || !nome_base_qry) { 
+        return NULL; }
     
     // Aloca espaço para "caminho/nome_geo-nome_qry.dot\0"
     size_t len = strlen(params->dir_saida) + strlen(nome_base_geo) + strlen(nome_base_qry) + 15;
@@ -561,13 +585,16 @@ char* getCaminhoDotConsulta(void *parametros) {
     free(nome_base_qry);
     return caminho;
 }
-
-char* duplicar_string(const char* s){
-    size_t tamanho = strlen(s) + 1;
-    char* nova_string = malloc(tamanho);
-    if (nova_string == NULL) {
-        return NULL;
-    }
-    strcpy(nova_string, s);
-    return nova_string;
+const char* getArquivoVia(void *parametros) {
+    if (!parametros) return NULL;
+    Parametros *params = (Parametros*)parametros;
+    return params->arquivo_via;
 }
+
+char* getCaminhoCompletoVia(void *parametros) {
+    if (!parametros) return NULL;
+    Parametros *params = (Parametros*)parametros;
+    if (!params->arquivo_via) return NULL;
+    return criar_caminho_completo(params->dir_entrada, params->arquivo_via);
+}
+

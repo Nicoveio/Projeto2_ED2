@@ -163,7 +163,29 @@ char* getCaminhoDotBase(void *parametros);
 char* getCaminhoDotConsulta(void *parametros);
 
 
+/**
+ * Cria uma duplicata de uma string na memória heap.
+ * É uma implementação portável da função não-padrão strdup, usando
+ * apenas funções da biblioteca padrão do C.
+ * @param s String a ser copiada.
+ * @return Ponteiro para a nova string alocada, ou NULL em caso de erro.
+ * O chamador é responsável por liberar a memória retornada com free().
+ */
 char* duplicar_string(const char* s);
+
+/**
+ * Obtém o nome do arquivo .via
+ * @param parametros Objeto de parâmetros
+ * @return String com o nome do arquivo ou NULL se não especificado
+ */
+const char* getArquivoVia(void *parametros);
+
+/**
+ * Obtém o caminho completo do arquivo .via
+ * @param parametros Objeto de parâmetros
+ * @return String com caminho completo (deve ser liberada com free) ou NULL
+ */
+char* getCaminhoCompletoVia(void *parametros);
 
 
 #endif 
