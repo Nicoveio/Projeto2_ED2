@@ -136,7 +136,6 @@ Node addNode(Graph g, char*nome, Info info){
 	int novoId = g0->nosInseridos;
   
     insertSmuT(g0->localizacaoNos, coord->x, coord->y, (Info)coord, 0, &boundingBoxVertice);
-    // ===============================================================
 
 	g0->vertices[novoId].nome = duplicar_string(nome);
 	g0->vertices[novoId].coord = coord;
