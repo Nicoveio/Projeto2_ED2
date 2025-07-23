@@ -187,6 +187,9 @@ const char* getArquivoVia(void *parametros);
  */
 char* getCaminhoCompletoVia(void *parametros);
 
+// Em utils.h
+void limpar_string(char* str);
+
 
 #endif 
 

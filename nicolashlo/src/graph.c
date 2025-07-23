@@ -84,6 +84,7 @@ Graph createGraph(int nVert, bool directed, char* nomeGrafo){
 	int primo = proxPrimo(nVert);
 	g->nomeId = createHashTable(primo);
 	g->localizacaoNos = newSmuTreap(1, 1.2, 0.1);
+    setPrioridadeMax(g->localizacaoNos, 10000);
 	if(!g->nomeId ||!g->localizacaoNos ){
 		free(g->vertices);
 		free(g->adjacencia);
@@ -107,6 +108,15 @@ int getTotalNodes(Graph g){
 }
 
 
+void boundingBoxVertice(DescritorTipoInfo tipo, Info i, double *x, double *y, double *w, double *h) {
+    // O bounding box de um vértice é apenas um ponto, então a largura e altura são zero.
+    Coordenadas* c = (Coordenadas*)i;
+    *x = c->x;
+    *y = c->y;
+    *w = 0;
+    *h = 0;
+}
+
 Node addNode(Graph g, char*nome, Info info){
 	if(!g || !nome || !info) exit(1);
     Grafo* g0 = (Grafo*)g;
@@ -117,21 +127,26 @@ Node addNode(Graph g, char*nome, Info info){
 		free(info);
 		return valor; 
 	}
+
 	if(g0->nosInseridos >= g0->maxNos){
 		printf("Grafo cheio");
 		exit(1);
 	}
+
 	int novoId = g0->nosInseridos;
-	insertSmuT(g0->localizacaoNos, coord->x, coord->y,(void*)(uintptr_t)novoId, 0, NULL);
+  
+    insertSmuT(g0->localizacaoNos, coord->x, coord->y, (Info)coord, 0, &boundingBoxVertice);
+    // ===============================================================
+
 	g0->vertices[novoId].nome = duplicar_string(nome);
 	g0->vertices[novoId].coord = coord;
 	g0->adjacencia[novoId] = lista_cria();
 
+    hashPut(g0->nomeId, nome, novoId);
+
 	g0->nosInseridos++;
 	return novoId;
-
 }
-
 
 Node getNode(Graph g, char* nome){
 
@@ -200,6 +215,24 @@ Info getEdgeInfo (Graph g, Edge e){
 	Aresta* a = (Aresta*)e;
 	return a->info;
 
+}
+
+Info getNodeInfo(Graph g, Node node) {
+    if (!g)
+        return NULL;
+    Grafo* g0 = (Grafo*)g;
+    if (node < 0 || node >= g0->nosInseridos) 
+        return NULL;
+    return (Info)g0->vertices[node].coord;
+}
+char* getNodeName(Graph g, Node node) {
+    if (!g) {
+        return NULL;
+    }
+    Grafo* g0 = (Grafo*)g;
+    if (node < 0 || node >= g0->nosInseridos) 
+        return NULL;
+    return g0->vertices[node].nome;
 }
 
 static double distanciaHeuristica(Grafo* g, Node a, Node b) {

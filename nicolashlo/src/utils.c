@@ -598,3 +598,14 @@ char* getCaminhoCompletoVia(void *parametros) {
     return criar_caminho_completo(params->dir_entrada, params->arquivo_via);
 }
 
+// Em utils.c
+#include <ctype.h> // Adicione este include no topo
+
+void limpar_string(char* str) {
+    if (str == NULL) return;
+    int len = strlen(str);
+    while (len > 0 && isspace((unsigned char)str[len - 1])) {
+        len--;
+    }
+    str[len] = '\0';
+}
