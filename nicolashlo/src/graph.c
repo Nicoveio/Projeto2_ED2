@@ -14,7 +14,6 @@
 
 #define INFINITO DBL_MAX
 
-
 typedef struct{
 	double x;
 	double y;
@@ -45,6 +44,8 @@ typedef struct Grafo{
 	hashTable nomeId;
 	hashTable subgrafos;
 } Grafo;
+
+static Coordenadas* coordenadas_para_callback = NULL;
 
 
 
@@ -119,10 +120,13 @@ int getTotalNodes(Graph g){
 
 
 void boundingBoxVertice(DescritorTipoInfo tipo, Info i, double *x, double *y, double *w, double *h) {
-    // O bounding box de um vértice é apenas um ponto, então a largura e altura são zero.
-    Coordenadas* c = (Coordenadas*)i;
-    *x = c->x;
-    *y = c->y;
+    if (coordenadas_para_callback) {
+        *x = coordenadas_para_callback->x;
+        *y = coordenadas_para_callback->y;
+    } else {
+        *x = 0;
+        *y = 0;
+    }
     *w = 0;
     *h = 0;
 }
@@ -144,8 +148,9 @@ Node addNode(Graph g, char*nome, Info info){
 	}
 
 	int novoId = g0->nosInseridos;
+	coordenadas_para_callback = coord;
   
-    insertSmuT(g0->localizacaoNos, coord->x, coord->y, (Info)coord, 0, &boundingBoxVertice);
+    insertSmuT(g0->localizacaoNos, coord->x, coord->y, (void*)(uintptr_t)novoId, 0, &boundingBoxVertice);
 
 	g0->vertices[novoId].nome = duplicar_string(nome);
 	g0->vertices[novoId].coord = coord;
@@ -260,6 +265,28 @@ static Lista reconstruirCaminho(Node* veioDe, Node atual) {
         lista_insere(caminhoTotal, (void*)(uintptr_t)atual); 
     }
     return caminhoTotal;
+}
+
+Edge getEdge(Graph g, Node from, Node to) {
+    if (!g) return NULL;
+    Grafo* g0 = (Grafo*)g;
+
+    if (from < 0 || from >= g0->nosInseridos || to < 0 || to >= g0->nosInseridos) 
+        return NULL;
+    Lista arestas_vizinhas = g0->adjacencia[from];
+    if (lista_vazia(arestas_vizinhas)) 
+        return NULL;
+    Iterador it = lista_iterador(arestas_vizinhas);
+    while (iterador_tem_proximo(it)) {
+        Aresta* aresta_atual = (Aresta*)iterador_proximo(it);
+        if (aresta_atual->destino == to) {
+            iterador_destroi(it);
+            return (Edge)aresta_atual;
+        }
+    }
+
+    iterador_destroi(it);
+    return NULL; 
 }
 
 Lista findPath(Graph g, Node inicio, Node fim, int criterio, CalculaCustoAresta funcCusto){

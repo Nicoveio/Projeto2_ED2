@@ -69,6 +69,12 @@ typedef bool (*procEdgeCallback)(Graph g, Edge e, int td, int tf, void *extra);
  */
 typedef bool (*dfsRestartedCallback)(Graph g, void *extra);
 
+/*
+   Calcula o custo (ou "peso") de uma aresta com base em um critério.
+   Esta função atua como um "callback" para o algoritmo findPath,
+   permitindo que a busca de caminho seja genérica e independente
+   dos dados específicos da aplicação (como comprimento e velocidade).
+*/
 typedef double (*CalculaCustoAresta)(Info info_aresta, int criterio);
 
 
