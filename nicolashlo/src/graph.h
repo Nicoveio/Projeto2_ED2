@@ -3,7 +3,7 @@
 
 #include "lista.h"
 #include "stdbool.h"
-
+#include "smutreap.h"
 /*
 Um Grafo  G e' constituido por um conjunto de vertices V e 
 um conjunto de arestas E, denotado por G=(V,E). 
@@ -212,6 +212,17 @@ void enableEdge(Graph g, Edge e);
 
 bool isEdgeEnabled(Graph g, Edge e);
 
+
+/*
+ * Busca nós dentro de uma região retangular
+ */
+bool getNodesInRegion(Graph g, double x1, double y1, double x2, double y2, Lista nosEncontrados);
+
+/*
+ * Obtém o ID do nó a partir de um NodeSmu da SmuTreap
+ */
+Node getNodeIdFromSmuTNode(Graph g, NodeSmu smuNode);
+
 /* Calcula o melhor percurso entre nós baseado em um critério. Retorna uma lista com a sequência de nós do percurso. */
 
 Lista findPath(Graph g, Node start, Node end, int criterio, CalculaCustoAresta funcCusto);
@@ -240,6 +251,7 @@ bool bfs(Graph g, Node node, procEdgeCallback discoverNode, void *extra);
    verificação linear de todos os nós.
 */
 Node findNearestNode(Graph g, double x, double y);
+void incomingEdges(Graph g, Node node, Lista arestasEntrada);
 
 
 /*

@@ -289,6 +289,21 @@ Edge getEdge(Graph g, Node from, Node to) {
     return NULL; 
 }
 
+bool getNodesInRegion(Graph g, double x1, double y1, double x2, double y2, Lista nosEncontrados) {
+    if (!g || !nosEncontrados) return false;
+    
+    Grafo* g0 = (Grafo*)g;
+    return getNodesDentroRegiaoSmuT(g0->localizacaoNos, x1, y1, x2, y2, nosEncontrados);
+}
+
+Node getNodeIdFromSmuTNode(Graph g, NodeSmu smuNode) {
+    if (!g || !smuNode) return -1;
+    
+    Grafo* g0 = (Grafo*)g;
+    Info id_info = getInfoSmuT(g0->localizacaoNos, smuNode);
+    return (Node)(uintptr_t)id_info;
+}
+
 Lista findPath(Graph g, Node inicio, Node fim, int criterio, CalculaCustoAresta funcCusto){
 	Grafo *g0 = (Grafo*)g;
 
@@ -391,6 +406,85 @@ Node findNearestNode(Graph g, double x, double y) {
     return no_mais_proximo;
 }
 
+
+void disableEdge(Graph g, Edge e) {
+    if (!e) return;
+    Aresta* a = (Aresta*)e;
+    a->habilitada = false;
+}
+
+void enableEdge(Graph g, Edge e) {
+    if (!e) return;
+    Aresta* a = (Aresta*)e;
+    a->habilitada = true;
+}
+
+
+bool isEdgeEnabled(Graph g, Edge e) {
+    if (!e) {
+        // Uma aresta nula não pode estar habilitada.
+        return false;
+    }
+    // Faz o cast do ponteiro opaco 'Edge' para a struct interna 'Aresta'.
+    Aresta* a = (Aresta*)e;
+
+    // Retorna o valor booleano do campo 'habilitada'.
+    return a->habilitada;
+}
+
+void incomingEdges(Graph g, Node node, Lista arestasEntrada) {
+    if (!g || !arestasEntrada || node < 0) return;
+    Grafo* g0 = (Grafo*)g;
+    if (node >= g0->nosInseridos) return;
+
+    // Percorre TODOS os nós para ver qual deles tem uma aresta para o 'node'
+    for (Node i = 0; i < g0->nosInseridos; i++) {
+        Lista arestas_saindo = g0->adjacencia[i];
+        if (lista_vazia(arestas_saindo)) continue;
+
+        Iterador it = lista_iterador(arestas_saindo);
+        while (iterador_tem_proximo(it)) {
+            Aresta* a = (Aresta*)iterador_proximo(it);
+            if (a->destino == node) {
+                lista_insere(arestasEntrada, (Edge)a);
+            }
+        }
+        iterador_destroi(it);
+    }
+}
+
+Node getFromNode(Graph g, Edge e) {
+    if (!g || !e) {
+        return -1; // Retorna um ID inválido se a entrada for nula
+    }
+    Grafo* g0 = (Grafo*)g;
+
+    // A única forma de encontrar a origem é percorrer as listas de adjacência
+    // para ver qual delas contém a aresta 'e'.
+    for (Node i = 0; i < g0->nosInseridos; i++) {
+        Lista arestas_saindo = g0->adjacencia[i];
+        if (lista_vazia(arestas_saindo)) {
+            continue;
+        }
+
+        Iterador it = lista_iterador(arestas_saindo);
+        while (iterador_tem_proximo(it)) {
+            // Pega o ponteiro da aresta na lista
+            Edge aresta_atual = (Edge)iterador_proximo(it);
+            
+            // Compara o ENDEREÇO de memória dos ponteiros
+            if (aresta_atual == e) {
+                // Se encontramos a aresta 'e' na lista de adjacência do nó 'i',
+                // então 'i' é o nó de origem.
+                iterador_destroi(it);
+                return i;
+            }
+        }
+        iterador_destroi(it);
+    }
+
+    return -1; // Retorna -1 se a aresta não for encontrada em nenhuma lista
+}
 
 void killDG(Graph g){
 	if(!g)return;

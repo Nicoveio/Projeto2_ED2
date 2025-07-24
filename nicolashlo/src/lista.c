@@ -127,3 +127,15 @@ Elemento iterador_proximo(Iterador it) {
 void iterador_destroi(Iterador it) {
     free(it);
 }
+
+Elemento lista_get_por_indice(Lista lista, int indice) {
+    if (!lista || indice < 0) return NULL;
+    ListaImp* l = (ListaImp*)lista;
+    if (indice >= l->tamanho) return NULL;
+
+    No* atual = l->primeiro;
+    for (int i = 0; i < indice; i++) {
+        atual = atual->prox;
+    }
+    return atual->dado;
+}

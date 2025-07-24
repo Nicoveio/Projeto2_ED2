@@ -58,6 +58,13 @@ typedef struct {
     Node no_fim;
 } LinhaInacessivel;
 
+typedef struct {
+    double x, y, w, h;
+    char cor_borda[25];
+    char cor_fill[25];
+    char opacidade[8];
+} RetanguloVisual;
+
 
 // ====================================================================
 // FUNÇÕES DE DESENHO (INTERNAS)
@@ -255,7 +262,10 @@ static void desenharLinhaInacessivel(FILE* arq, Graph g, LinhaInacessivel* linha
                 coord_fim->x, coord_fim->y);
     }
 }
-
+static void desenharRetanguloAlagamento(FILE* arq, RetanguloVisual* rv) {
+    fprintf(arq, "  <svg:rect x=\"%.2f\" y=\"%.2f\" width=\"%.2f\" height=\"%.2f\" stroke=\"%s\" fill=\"%s\" stroke-width=\"2\" fill-opacity=\"%s\" />\n",
+            rv->x, rv->y, rv->w, rv->h, rv->cor_borda, rv->cor_fill, rv->opacidade);
+}
 void gerarSvgFinal(Graph g, Lista quadras, ResultadosConsulta res, const char* caminho_svg) {
     if (!caminho_svg) return;
 
@@ -336,6 +346,11 @@ void gerarSvgFinal(Graph g, Lista quadras, ResultadosConsulta res, const char* c
                 desenharLinhaInacessivel(arquivo, g, (LinhaInacessivel*)el->dados);
                 break;
                 }
+                case TIPO_RETANGULO_ALAGAMENTO:{
+                    desenharRetanguloAlagamento(arquivo, (RetanguloVisual*)el->dados);
+                    break;
+                }
+
 
 
             }

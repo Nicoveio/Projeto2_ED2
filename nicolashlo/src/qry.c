@@ -13,6 +13,7 @@
 #include "svg.h"
 #include "geo.h" 
 #include "via.h"
+#include "smutreap.h"
 
 #define INFINITO DBL_MAX
 #define MAX_PERCURSOS 300
@@ -61,7 +62,8 @@ typedef struct {
 typedef struct {
     Lista elementos_para_desenhar;
     Percurso** vestiario_de_percursos; 
-    int contador_de_fichas;  
+    int contador_de_fichas;
+    Lista vestiario_de_alagamentos;  
 } ResultadosConsultaImp;
 
 typedef struct {
@@ -83,6 +85,18 @@ typedef struct {
     Node no_inicio;
     Node no_fim;
 } LinhaInacessivel;
+
+typedef struct {
+    double x, y, w, h;
+    char cor_borda[25];
+    char cor_fill[25];
+    char opacidade[8];
+} RetanguloVisual;
+
+typedef struct {
+    int id;
+    Lista arestas_desabilitadas;
+} InfoAlagamento;
 
 static Quadra* encontrarQuadraPorCep(Lista lista_de_quadras, const char* cep) {
     if (!lista_de_quadras || !cep) return NULL;
@@ -378,6 +392,128 @@ static void executaShw(const char* linha, Graph g, Percurso** vestiario, hashTab
     }
 }
 
+static void executaAlag(const char* linha, Graph g, ResultadosConsultaImp* resultados, hashTable alagamentos, FILE* txt) {
+    int n;
+    double x, y, w, h;
+    sscanf(linha, "alag %d %lf %lf %lf %lf", &n, &x, &y, &w, &h);
+    fprintf(txt, "[alag*]\n\tÁrea de alagamento: n=%d, região (%.2f,%.2f) até (%.2f,%.2f)\n", n, x, y, x+w, y+h);
+    
+    Lista nos_na_regiao = lista_cria();
+
+    bool encontrou_nos = getNodesInRegion(g, x, y, x + w, y + h, nos_na_regiao);
+    
+    if (!encontrou_nos || lista_vazia(nos_na_regiao)) {
+        fprintf(txt, "\tAVISO: Nenhum nó encontrado na região especificada.\n");
+        lista_libera(nos_na_regiao);
+        return;
+    }
+    
+    fprintf(txt, "\tNós encontrados na região: %d\n", lista_tamanho(nos_na_regiao));
+
+    Lista arestas_afetadas = lista_cria();
+    
+    Iterador it_nos = lista_iterador(nos_na_regiao);
+    while (iterador_tem_proximo(it_nos)) {
+        NodeSmu no_da_arvore = (NodeSmu)iterador_proximo(it_nos);
+        Node id_no_alagado = getNodeIdFromSmuTNode(g, no_da_arvore);
+        
+        if (id_no_alagado == -1) {
+            fprintf(txt, "\tERRO: Não foi possível obter ID do nó da SmuTreap\n");
+            continue;
+        }
+        
+        fprintf(txt, "\tProcessando nó alagado: %s (ID: %d)\n", getNodeName(g, id_no_alagado), id_no_alagado);
+        
+        // Desabilita arestas de SAÍDA do nó alagado
+        Lista arestas_saindo = lista_cria();
+        adjacentEdges(g, id_no_alagado, arestas_saindo);
+        Iterador it_saindo = lista_iterador(arestas_saindo);
+        while (iterador_tem_proximo(it_saindo)) {
+            Edge aresta = (Edge)iterador_proximo(it_saindo);
+            if (isEdgeEnabled(g, aresta)) {
+                disableEdge(g, aresta);
+                lista_insere(arestas_afetadas, aresta);
+                Node destino = getToNode(g, aresta);
+                fprintf(txt, "\t  -> Aresta DESABILITADA: %s -> %s\n", 
+                       getNodeName(g, id_no_alagado), getNodeName(g, destino));
+            }
+        }
+        iterador_destroi(it_saindo);
+        lista_libera(arestas_saindo);
+        Lista arestas_chegando = lista_cria();
+        incomingEdges(g, id_no_alagado, arestas_chegando);
+        Iterador it_chegando = lista_iterador(arestas_chegando);
+        while (iterador_tem_proximo(it_chegando)) {
+            Edge aresta = (Edge)iterador_proximo(it_chegando);
+            if (isEdgeEnabled(g, aresta)) {
+                disableEdge(g, aresta);
+                lista_insere(arestas_afetadas, aresta);
+                Node origem = getFromNode(g, aresta);
+                fprintf(txt, "\t  -> Aresta DESABILITADA: %s -> %s\n", 
+                       getNodeName(g, origem), getNodeName(g, id_no_alagado));
+            }
+        }
+        iterador_destroi(it_chegando);
+        lista_libera(arestas_chegando);
+    }
+    iterador_destroi(it_nos);
+    lista_libera(nos_na_regiao);
+    
+    fprintf(txt, "\tTotal de arestas desabilitadas: %d\n", lista_tamanho(arestas_afetadas));
+    
+    // Guardar informações do alagamento para o comando 'dren'
+    InfoAlagamento* info_alag = malloc(sizeof(InfoAlagamento));
+    info_alag->id = n;
+    info_alag->arestas_desabilitadas = arestas_afetadas;
+    lista_insere(resultados->vestiario_de_alagamentos, info_alag);
+    int id_do_alagamento = lista_tamanho(resultados->vestiario_de_alagamentos) - 1;
+    char chave_n[12];
+    sprintf(chave_n, "%d", n);
+    hashPut(alagamentos, chave_n, id_do_alagamento);
+    RetanguloVisual* rv = malloc(sizeof(RetanguloVisual));
+    rv->x = x; rv->y = y; rv->w = w; rv->h = h;
+    strcpy(rv->cor_borda, "#AA0044");
+    strcpy(rv->cor_fill, "#AB37C8");
+    strcpy(rv->opacidade, "0.5");
+
+    ElementoVisual* el = malloc(sizeof(ElementoVisual));
+    el->tipo = TIPO_RETANGULO_ALAGAMENTO;
+    el->dados = rv;
+    lista_insere(resultados->elementos_para_desenhar, el);
+}
+
+static void executaDren(const char* linha, Graph g, ResultadosConsultaImp* resultados, hashTable alagamentos, FILE* txt) {
+    int n;
+    sscanf(linha, "dren %d", &n);
+    fprintf(txt, "[dren*] Drenando região n=%d\n", n);
+
+    char chave_n[12];
+    sprintf(chave_n, "%d", n);
+    
+    int id_do_alagamento;
+    if (hashGet(alagamentos, chave_n, &id_do_alagamento)) {
+        InfoAlagamento* info_alag = (InfoAlagamento*)lista_get_por_indice(resultados->vestiario_de_alagamentos, id_do_alagamento);
+    
+        if (info_alag) {
+            Iterador it = lista_iterador(info_alag->arestas_desabilitadas);
+            int contagem = 0;
+            
+            fprintf(txt, "\tArestas reabilitadas:\n"); // Adiciona um cabeçalho para o relatório
+
+            while (iterador_tem_proximo(it)) {
+                Edge aresta = (Edge)iterador_proximo(it);
+                Node origem = getFromNode(g, aresta);
+                Node destino = getToNode(g, aresta);
+                fprintf(txt, "\t  -> %s -> %s\n", getNodeName(g, origem), getNodeName(g, destino));
+                contagem++;
+            }
+            iterador_destroi(it);
+            fprintf(txt, "\t-> Total de %d arestas foram reabilitadas.\n", contagem);
+        }
+    } else {
+        fprintf(txt, "\tERRO: Região de alagamento n=%d não encontrada.\n", n);
+    }
+}
 ResultadosConsulta processaQry(Graph g, Lista quadras, const char* caminho_qry, const char* caminho_txt_saida, CalculaCustoAresta funcCusto) {
     FILE* arquivo_qry = fopen(caminho_qry, "r");
     FILE* arquivo_txt = fopen(caminho_txt_saida, "w");
@@ -397,6 +533,8 @@ ResultadosConsulta processaQry(Graph g, Lista quadras, const char* caminho_qry, 
     resultados->vestiario_de_percursos = calloc(MAX_PERCURSOS, sizeof(Percurso*));
     resultados->contador_de_fichas = 0;
     hashTable tabela_de_percursos = createHashTable(29);
+    hashTable tabela_de_alagamentos = createHashTable(13);
+    resultados->vestiario_de_alagamentos = lista_cria();
     char buffer_linha[1024];
     while (fgets(buffer_linha, sizeof(buffer_linha), arquivo_qry) != NULL) {
         buffer_linha[strcspn(buffer_linha, "\r\n")] = '\0';
@@ -412,25 +550,11 @@ ResultadosConsulta processaQry(Graph g, Lista quadras, const char* caminho_qry, 
         
         //  COMANDO alag
         } else if (strncmp(buffer_linha, "alag", 4) == 0) {
-            printf("processa alag simulação");
-            fprintf(arquivo_txt, "  -> Comando 'alag' identificado, mas não implementado.\n");
-
-            //'Parsear' n, x, y, w, h da linha.
-            //Usar a SmuTreap (getNodeSmusDentroRegiaoSmuT?) para encontrar os vértices na área.
-            //Para cada vértice encontrado, percorrer sua lista de adjacência e chamar disableEdge.
-            //Guardar as arestas desabilitadas associadas ao 'n'.
-            //Adicionar o retângulo de alagamento à 'elementos_para_desenhar'.
-            //Escrever as arestas desabilitadas no .txt.
+           executaAlag(buffer_linha, g, resultados, tabela_de_alagamentos, arquivo_txt);
 
         // COMANDO dren 
         } else if (strncmp(buffer_linha, "dren", 4) == 0) {
-            printf("processa dren simulação");
-            fprintf(arquivo_txt, "  -> Comando 'dren' identificado, mas não implementado.\n");
-            //Parsear 'n' da linha.
-            //Recuperar a lista de arestas associadas ao 'n' do alagamento.
-            //Chamar enableEdge para cada uma.
-            //Escrever as arestas reabilitadas no .txt.
-
+             executaDren(buffer_linha, g, resultados, tabela_de_alagamentos, arquivo_txt);
         //  COMANDO sg 
         } else if (strncmp(buffer_linha, "sg", 2) == 0) {
             printf("processa sg simulação");

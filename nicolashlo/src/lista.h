@@ -24,5 +24,5 @@ Iterador lista_iterador(Lista l);
 bool iterador_tem_proximo(Iterador it);
 Elemento iterador_proximo(Iterador it);
 void iterador_destroi(Iterador it);
-
+Elemento lista_get_por_indice(Lista lista, int indice);
 #endif
