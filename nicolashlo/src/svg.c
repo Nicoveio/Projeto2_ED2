@@ -31,7 +31,8 @@ typedef enum {
     TIPO_MARCADOR_O,
     TIPO_CAMINHO,
     TIPO_LINHA_INACESSIVEL,
-    TIPO_RETANGULO_ALAGAMENTO
+    TIPO_RETANGULO_ALAGAMENTO,
+    TIPO_RETANGULO_SUBGRAFO
 
 } TipoElementoVisual;
 
@@ -65,6 +66,9 @@ typedef struct {
     char opacidade[8];
 } RetanguloVisual;
 
+typedef struct {
+    double x, y, w, h;
+} RetanguloSubgrafo;
 
 // ====================================================================
 // FUNÇÕES DE DESENHO (INTERNAS)
@@ -201,43 +205,55 @@ static void desenharMarcadorO(FILE* arq, MarcadorO* marcador) {
     // Verifica se a face é horizontal (Norte ou Sul)
     if (marcador->face == 'N' || marcador->face == 'n' || marcador->face == 'S' || marcador->face == 's') {
         // Desenha uma LINHA VERTICAL do topo (y=0) até o ponto
-        fprintf(arq, "  <svg:line x1=\"%.2f\" y1=\"0\" x2=\"%.2f\" y2=\"%.2f\" stroke=\"red\" stroke-width=\"1\" stroke-dasharray=\"5,5\" />\n",
+        fprintf(arq, "  <svg:line x1=\"%.2f\" y1=\"0\" x2=\"%.2f\" y2=\"%.2f\" stroke=\"red\" stroke-width=\"3\" stroke-dasharray=\"5,5\" />\n",
                 marcador->x, marcador->x, marcador->y);
         // Escreve o texto no topo da linha
         fprintf(arq, "  <svg:text x=\"%.2f\" y=\"0\" fill=\"red\" font-size=\"10\" dy=\"-5\">%s</svg:text>\n",
                 marcador->x, marcador->registrador);
     } else { // A face é vertical (Leste ou Oeste)
         // Desenha uma LINHA HORIZONTAL da esquerda (x=0) até o ponto
-        fprintf(arq, "  <svg:line x1=\"0\" y1=\"%.2f\" x2=\"%.2f\" y2=\"%.2f\" stroke=\"red\" stroke-width=\"1\" stroke-dasharray=\"5,5\" />\n",
+        fprintf(arq, "  <svg:line x1=\"0\" y1=\"%.2f\" x2=\"%.2f\" y2=\"%.2f\" stroke=\"red\" stroke-width=\"3\" stroke-dasharray=\"5,5\" />\n",
                 marcador->y, marcador->x, marcador->y);
         // Escreve o texto na ponta esquerda da linha
         fprintf(arq, "  <svg:text x=\"0\" y=\"%.2f\" fill=\"red\" font-size=\"10\" dx=\"5\">%s</svg:text>\n",
                 marcador->y, marcador->registrador);
     }
 }
+
 static void desenharCaminho(FILE* arq, Graph g, CaminhoVisual* caminho_visual, int* path_id_counter) {
     if (lista_vazia(caminho_visual->caminho)) return;
 
-    char path_string[16384] = "M ";
+    size_t capacidade_atual = 8192; 
+    char* path_string = malloc(capacidade_atual);
+    strcpy(path_string, "M ");
+    
     char temp[100];
-
-    // Define o deslocamento. O caminho curto fica um pouco à "esquerda/cima", o rápido um pouco à "direita/baixo".
-    double offset = caminho_visual->eh_curto ? -3.0 : 3.0;
+    double offset = caminho_visual->eh_curto ? -4 : 4;
 
     Iterador it = lista_iterador(caminho_visual->caminho);
     while(iterador_tem_proximo(it)) {
         Node no_id = (Node)(uintptr_t)iterador_proximo(it);
         Coordenadas* c = (Coordenadas*)getNodeInfo(g, no_id);
-        // Aplica o offset às coordenadas antes de adicioná-las à string
         sprintf(temp, "%.2f,%.2f L ", c->x + offset, c->y + offset);
+
+        if (strlen(path_string) + strlen(temp) >= capacidade_atual) {
+            capacidade_atual *= 2;
+            char* novo_ponteiro = realloc(path_string, capacidade_atual);
+            if (novo_ponteiro == NULL) {
+                fprintf(stderr, "ERRO CRÍTICO: Falha ao realocar memória para o path do SVG. O caminho pode estar incompleto.\n");
+                break;
+            }
+            path_string = novo_ponteiro;
+        }
         strcat(path_string, temp);
     }
     iterador_destroi(it);
-    path_string[strlen(path_string) - 2] = '\0';
+    path_string[strlen(path_string) - 2] = '\0'; 
 
     char path_id[20];
     sprintf(path_id, "path_%d", (*path_id_counter)++);
-    fprintf(arq, "  <svg:path id=\"%s\" d=\"%s\" stroke=\"%s\" stroke-width=\"8.0\" fill=\"none\" stroke-opacity=\"2.0\" />\n", 
+
+    fprintf(arq, "  <svg:path id=\"%s\" d=\"%s\" stroke=\"%s\" stroke-width=\"8.0\" fill=\"none\" stroke-opacity=\"1.0\" />\n", 
             path_id, path_string, caminho_visual->cor);
 
     fprintf(arq, "  <svg:image href=\"https://www.uel.br/pessoal/bacarin/figs/eb.jpg\" width=\"40\" height=\"40\" transform=\"translate(-20,-20)\">\n");
@@ -245,9 +261,11 @@ static void desenharCaminho(FILE* arq, Graph g, CaminhoVisual* caminho_visual, i
     fprintf(arq, "      <svg:mpath href=\"#%s\"/>\n", path_id);
     fprintf(arq, "    </svg:animateMotion>\n");
     fprintf(arq, "  </svg:image>\n");
-
-
+    
+    free(path_string);
 }
+
+
 static void desenharLinhaInacessivel(FILE* arq, Graph g, LinhaInacessivel* linha) {
     if (!linha) return;
 
@@ -265,6 +283,11 @@ static void desenharLinhaInacessivel(FILE* arq, Graph g, LinhaInacessivel* linha
 static void desenharRetanguloAlagamento(FILE* arq, RetanguloVisual* rv) {
     fprintf(arq, "  <svg:rect x=\"%.2f\" y=\"%.2f\" width=\"%.2f\" height=\"%.2f\" stroke=\"%s\" fill=\"%s\" stroke-width=\"2\" fill-opacity=\"%s\" />\n",
             rv->x, rv->y, rv->w, rv->h, rv->cor_borda, rv->cor_fill, rv->opacidade);
+}
+
+static void desenharRetanguloSubgrafo(FILE* arq, RetanguloSubgrafo* rs) {
+    fprintf(arq, "  <svg:rect x=\"%.2f\" y=\"%.2f\" width=\"%.2f\" height=\"%.2f\" stroke=\"red\" stroke-width=\"6\" stroke-dasharray=\"5,5\" fill=\"none\" />\n",
+            rs->x, rs->y, rs->w, rs->h);
 }
 void gerarSvgFinal(Graph g, Lista quadras, ResultadosConsulta res, const char* caminho_svg) {
     if (!caminho_svg) return;
@@ -350,6 +373,9 @@ void gerarSvgFinal(Graph g, Lista quadras, ResultadosConsulta res, const char* c
                     desenharRetanguloAlagamento(arquivo, (RetanguloVisual*)el->dados);
                     break;
                 }
+                case TIPO_RETANGULO_SUBGRAFO:
+                    desenharRetanguloSubgrafo(arquivo, (RetanguloSubgrafo*)el->dados);
+                    break;
 
 
 

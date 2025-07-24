@@ -84,7 +84,6 @@ int main(int argc, char *argv[]) {
     }
     printf("\n4. Finalizando e liberando memória...\n");
 
-    killDG(g);
     if (lista_de_quadras) {
         Iterador it = lista_iterador(lista_de_quadras);
         while(iterador_tem_proximo(it)) {
@@ -100,6 +99,7 @@ int main(int argc, char *argv[]) {
     free(caminho_qry);
     free(caminho_svg_saida);
     free(caminho_txt_saida);
+    killDG(g);
     
     printf("   [OK] Memória liberada.\n\n");
     printf("Execução concluída com sucesso!\n");
