@@ -125,3 +125,55 @@ void hashTableDestroy(hashTable ht){
 
 }
 
+typedef struct {
+	tabelaHash* ht;
+	int bucket_index;
+	HashNode* current_node;
+} iteradorHash;
+
+hashIterator hash_iterador(hashTable ht) {
+	tabelaHash* ht0 = (tabelaHash*)ht;
+	iteradorHash* it = malloc(sizeof(iteradorHash));
+	if (!it) return NULL;
+	it->ht = ht0;
+	it->bucket_index = 0;
+	it->current_node = NULL;
+	while (it->bucket_index < ht0->size && ht0->balde[it->bucket_index] == NULL) {
+		it->bucket_index++;
+	}
+	if (it->bucket_index < ht0->size) {
+		it->current_node = ht0->balde[it->bucket_index];
+	} else {
+		it->current_node = NULL;
+	}
+	return (hashIterator)it;
+}
+
+bool hash_iterador_tem_proximo(hashIterator it) {
+	iteradorHash* i = (iteradorHash*)it;
+	return i->current_node != NULL;
+}
+
+const char* hash_iterador_proximo(hashIterator it) {
+	iteradorHash* i = (iteradorHash*)it;
+	if (!i->current_node) return NULL;
+	const char* chave = i->current_node->chave;
+	if (i->current_node->prox != NULL) {
+		i->current_node = i->current_node->prox;
+	} else {
+		i->bucket_index++;
+		while (i->bucket_index < i->ht->size && i->ht->balde[i->bucket_index] == NULL) {
+			i->bucket_index++;
+		}
+		if (i->bucket_index < i->ht->size) {
+			i->current_node = i->ht->balde[i->bucket_index];
+		} else {
+			i->current_node = NULL;
+		}
+	}
+	return chave;
+}
+
+void hash_finalizar_iterador(hashIterator it) {
+	free(it);
+}
