@@ -7,6 +7,7 @@
 #include "svg.h"
 #include "graph.h"
 #include "lista.h"
+#include "qry.h"
 
 #define MARGEM_VIEWBOX 50.0
 
@@ -23,6 +24,26 @@ typedef struct {
     double x;
     double y;
 } Coordenadas;
+
+
+typedef enum {
+    TIPO_MARCADOR_O,
+    TIPO_CAMINHO,
+    TIPO_RETANGULO_ALAGAMENTO
+
+} TipoElementoVisual;
+
+typedef struct {
+    char registrador[8]; 
+    double x; 
+    double y;
+    char face;
+} MarcadorO;
+
+typedef struct { 
+    TipoElementoVisual tipo; 
+    void* dados; } ElementoVisual;
+
 
 // ====================================================================
 // FUNÇÕES DE DESENHO (INTERNAS)
@@ -152,4 +173,102 @@ void gerarSvgBase(Graph g, Lista quadras, const char* caminho_svg) {
 
     fclose(arquivo);
     printf("SVG base gerado com sucesso: %s\n", caminho_svg);
+}
+
+
+static void desenharMarcadorO(FILE* arq, MarcadorO* marcador) {
+    // Verifica se a face é horizontal (Norte ou Sul)
+    if (marcador->face == 'N' || marcador->face == 'n' || marcador->face == 'S' || marcador->face == 's') {
+        // Desenha uma LINHA VERTICAL do topo (y=0) até o ponto
+        fprintf(arq, "  <svg:line x1=\"%.2f\" y1=\"0\" x2=\"%.2f\" y2=\"%.2f\" stroke=\"red\" stroke-width=\"1\" stroke-dasharray=\"5,5\" />\n",
+                marcador->x, marcador->x, marcador->y);
+        // Escreve o texto no topo da linha
+        fprintf(arq, "  <svg:text x=\"%.2f\" y=\"0\" fill=\"red\" font-size=\"10\" dy=\"-5\">%s</svg:text>\n",
+                marcador->x, marcador->registrador);
+    } else { // A face é vertical (Leste ou Oeste)
+        // Desenha uma LINHA HORIZONTAL da esquerda (x=0) até o ponto
+        fprintf(arq, "  <svg:line x1=\"0\" y1=\"%.2f\" x2=\"%.2f\" y2=\"%.2f\" stroke=\"red\" stroke-width=\"1\" stroke-dasharray=\"5,5\" />\n",
+                marcador->y, marcador->x, marcador->y);
+        // Escreve o texto na ponta esquerda da linha
+        fprintf(arq, "  <svg:text x=\"0\" y=\"%.2f\" fill=\"red\" font-size=\"10\" dx=\"5\">%s</svg:text>\n",
+                marcador->y, marcador->registrador);
+    }
+}
+
+void gerarSvgFinal(Graph g, Lista quadras, ResultadosConsulta res, const char* caminho_svg) {
+    if (!caminho_svg) return;
+
+    FILE* arquivo = fopen(caminho_svg, "w");
+    if (!arquivo) {
+        fprintf(stderr, "ERRO: Não foi possível criar o arquivo SVG em '%s'\n", caminho_svg);
+        return;
+    }
+
+    // --- 1. Calcular as dimensões do conteúdo ---
+    double min_x = DBL_MAX, max_x = DBL_MIN, min_y = DBL_MAX, max_y = DBL_MIN;
+    // ... (percorrendo a lista de quadras e os vértices do grafo para encontrar os limites) ...
+    if (quadras && !lista_vazia(quadras)) {
+        Iterador it_q = lista_iterador(quadras);
+        while (iterador_tem_proximo(it_q)) {
+            Quadra* q = (Quadra*)iterador_proximo(it_q);
+            if (q->x < min_x) min_x = q->x;
+            if (q->y < min_y) min_y = q->y;
+            if (q->x + q->w > max_x) max_x = q->x + q->w;
+            if (q->y + q->h > max_y) max_y = q->y + q->h;
+        }
+        iterador_destroi(it_q);
+    }
+    if (g && getTotalNodes(g) > 0) {
+        for (Node i = 0; i < getTotalNodes(g); i++) {
+            Coordenadas* c = (Coordenadas*)getNodeInfo(g, i);
+            if (c->x < min_x) min_x = c->x;
+            if (c->y < min_y) min_y = c->y;
+            if (c->x > max_x) max_x = c->x;
+            if (c->y > max_y) max_y = c->y;
+        }
+    }
+    
+    // Calcula os parâmetros do viewBox
+    double vb_x = min_x - MARGEM_VIEWBOX;
+    double vb_y = min_y - MARGEM_VIEWBOX;
+    double vb_w = (max_x - min_x) + (2 * MARGEM_VIEWBOX);
+    double vb_h = (max_y - min_y) + (2 * MARGEM_VIEWBOX);
+
+    // --- 2. Escrever o Cabeçalho do SVG (usando o estilo do professor) ---
+    fprintf(arquivo, "<?xml version='1.0' encoding='utf-8'?>\n");
+    fprintf(arquivo, "<svg:svg xmlns:svg=\"http://www.w3.org/2000/svg\" viewBox=\"%.2f %.2f %.2f %.2f\">\n", vb_x, vb_y, vb_w, vb_h);
+    fprintf(arquivo, "<svg:defs>\n");
+    fprintf(arquivo, "  <svg:marker id=\"mArrow\" markerWidth=\"8\" markerHeight=\"8\" refX=\"0\" refY=\"4.0\" orient=\"auto\">\n");
+    fprintf(arquivo, "    <svg:path d=\"M0,0 L0,8 L8,4 z\" style=\"fill: #000000;\" />\n");
+    fprintf(arquivo, "  </svg:marker>\n");
+    fprintf(arquivo, "</svg:defs>\n");
+    fprintf(arquivo, "  <rect width=\"100%%\" height=\"100%%\" fill=\"#ced4da\" />\n");
+
+// --- DESENHAR O MAPA BASE ---
+    fprintf(arquivo, "<svg:g id=\"mapa_base\">\n");
+    desenharQuadras(arquivo, quadras);
+    desenharRuasEVertices(arquivo, g);
+
+    fprintf(arquivo, "\n  \n");
+    Lista elementos = getElementosParaDesenhar(res); // <-- A MUDANÇA
+    if (elementos) {
+        Iterador it = lista_iterador(elementos);
+        while(iterador_tem_proximo(it)) {
+            ElementoVisual* el = (ElementoVisual*)iterador_proximo(it);
+            if (el->tipo == TIPO_MARCADOR_O) {
+                desenharMarcadorO(arquivo, (MarcadorO*)el->dados);
+            }
+            // falta else if pros demais desenhos ...
+        }
+        iterador_destroi(it);
+    }
+
+    fprintf(arquivo, "</svg:g>\n");
+    // --- 4. Escrever o Rodapé ---
+    fprintf(arquivo, "</svg:svg>\n");
+
+    fclose(arquivo);
+    printf("SVG base gerado com sucesso: %s\n", caminho_svg);
+
+
 }
