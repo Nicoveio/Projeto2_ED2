@@ -25,4 +25,19 @@ bool iterador_tem_proximo(Iterador it);
 Elemento iterador_proximo(Iterador it);
 void iterador_destroi(Iterador it);
 Elemento lista_get_por_indice(Lista lista, int indice);
+
+/**
+ * Retorna o primeiro elemento da lista sem removê-lo.
+ */
+Elemento lista_get_primeiro(Lista lista);
+
+/**
+ * Retorna o último elemento da lista sem removê-lo.
+ */
+Elemento lista_get_ultimo(Lista lista);
+
+/**
+ * Cria uma nova lista que é a concatenação de duas outras.
+ */
+Lista lista_concatena(Lista l1, Lista l2);
 #endif

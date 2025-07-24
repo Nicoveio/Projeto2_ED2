@@ -139,3 +139,61 @@ Elemento lista_get_por_indice(Lista lista, int indice) {
     }
     return atual->dado;
 }
+
+Elemento lista_get_primeiro(Lista lista) {
+    if (!lista || lista_vazia(lista)) return NULL;
+    ListaImp* l = (ListaImp*)lista;
+    return l->primeiro->dado;
+}
+
+Elemento lista_get_ultimo(Lista lista) {
+    if (!lista || lista_vazia(lista)) return NULL;
+    ListaImp* l = (ListaImp*)lista;
+    No* atual = l->primeiro;
+    while (atual->prox != NULL) {
+        atual = atual->prox;
+    }
+    return atual->dado;
+}
+
+Lista lista_concatena(Lista l1, Lista l2) {
+    Lista nova_lista = lista_cria();
+    ListaImp* nl = (ListaImp*)nova_lista;
+    No* cauda = NULL; // Ponteiro para o último nó da nova lista
+
+    // Copia os elementos de l1
+    Iterador it1 = lista_iterador(l1);
+    while (iterador_tem_proximo(it1)) {
+        Elemento el = iterador_proximo(it1);
+        // Insere no final da nova lista (lógica otimizada)
+        No* novo_no = (No*)malloc(sizeof(No));
+        novo_no->dado = el;
+        novo_no->prox = NULL;
+        if (cauda == NULL) {
+            nl->primeiro = novo_no;
+        } else {
+            cauda->prox = novo_no;
+        }
+        cauda = novo_no;
+        nl->tamanho++;
+    }
+    iterador_destroi(it1);
+
+    Iterador it2 = lista_iterador(l2);
+    while (iterador_tem_proximo(it2)) {
+        Elemento el = iterador_proximo(it2);
+        No* novo_no = (No*)malloc(sizeof(No));
+        novo_no->dado = el;
+        novo_no->prox = NULL;
+        if (cauda == NULL) {
+            nl->primeiro = novo_no;
+        } else {
+            cauda->prox = novo_no;
+        }
+        cauda = novo_no;
+        nl->tamanho++;
+    }
+    iterador_destroi(it2);
+
+    return nova_lista;
+}
