@@ -4,8 +4,7 @@ CC = gcc
 CFLAGS = -g -O0 -std=c99 -fstack-protector-all -Werror=implicit-function-declaration -Wall
 LDFLAGS = 
 LIBS = -lm
-
-SRCS = main.c graph.c hash.c priority_queue.c lista.c fila.c smutreap.c utils.c via.c geo.c svg.c
+SRCS = main.c graph.c hash.c priority_queue.c lista.c fila.c smutreap.c utils.c via.c geo.c svg.c qry.c
 
 OBJETOS = $(SRCS:.c=.o)
 
@@ -34,7 +33,7 @@ via.o: via.c via.h graph.h utils.h
 geo.o: geo.c geo.h lista.h
 svg.o: svg.c svg.h graph.h lista.h
 
-main.o: main.c utils.h via.h graph.h lista.h geo.h svg.h
+main.o: main.c utils.h via.h graph.h lista.h geo.h svg.h qry.h
 
 clean:
 	rm -f $(OBJETOS) $(PROJ_NAME)
