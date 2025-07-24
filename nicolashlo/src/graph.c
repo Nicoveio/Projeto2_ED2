@@ -30,6 +30,12 @@ typedef struct{
 	Coordenadas* coord;
 } Vertice;
 
+typedef struct {
+    char* nome;
+    hashTable nos;   
+    hashTable arestas; 
+} Subgrafo;
+
 typedef struct Grafo{
 	Vertice* vertices;
 	Lista* adjacencia;
@@ -37,7 +43,10 @@ typedef struct Grafo{
 	int nosInseridos;
 	SmuTreap localizacaoNos;
 	hashTable nomeId;
+	hashTable subgrafos;
 } Grafo;
+
+
 
 bool ehPrimo(int n){
 	if(n<=1)return false;
@@ -85,7 +94,8 @@ Graph createGraph(int nVert, bool directed, char* nomeGrafo){
 	g->nomeId = createHashTable(primo);
 	g->localizacaoNos = newSmuTreap(1, 1.2, 0.1);
     setPrioridadeMax(g->localizacaoNos, 10000);
-	if(!g->nomeId ||!g->localizacaoNos ){
+    g->subgrafos = createHashTable(13); 
+	if(!g->nomeId ||!g->localizacaoNos || !g->subgrafos ){
 		free(g->vertices);
 		free(g->adjacencia);
 		hashTableDestroy(g->nomeId);
@@ -375,7 +385,110 @@ void killDG(Graph g){
 	free(g0->adjacencia);
 	hashTableDestroy(g0->nomeId);
 	killSmuTreap(g0->localizacaoNos);
-	/* hashDestroy(g->subgrafos) */
+	hashTableDestroy(g0->subgrafos);
 
 	free(g);
+}
+
+static Subgrafo* getSubgraph(Grafo* g, const char* nomeSubgrafo) {
+    Subgrafo* sg;
+    int sg_ptr_int;
+    if (hashGet(g->subgrafos, nomeSubgrafo, &sg_ptr_int)) {
+        sg = (Subgrafo*)(uintptr_t)sg_ptr_int;
+        return sg;
+    }
+    return NULL;
+}
+
+void createSubgraphDG(Graph g_opaco, char* nomeSubgrafo, char* nomesVerts[], int nVert, bool comArestas) {
+    Grafo* g = (Grafo*)g_opaco;
+
+    Subgrafo* sg = malloc(sizeof(Subgrafo));
+    sg->nome = duplicar_string(nomeSubgrafo);
+    sg->nos = createHashTable(proxPrimo(nVert));
+    sg->arestas = createHashTable(proxPrimo(nVert * 4));
+
+    hashPut(g->subgrafos, nomeSubgrafo, (int)(uintptr_t)sg);
+
+    for (int i = 0; i < nVert; i++) {
+        Node id_no = getNode(g_opaco, nomesVerts[i]);
+        if (id_no != -1) {
+            hashPut(sg->nos, nomesVerts[i], id_no);
+        }
+    }
+
+    if (comArestas) {
+        for (int i = 0; i < nVert; i++) {
+            Node id_origem = getNode(g_opaco, nomesVerts[i]);
+            if (id_origem == -1) continue;
+
+            Lista arestas_vizinhas = g->adjacencia[id_origem];
+            if (lista_vazia(arestas_vizinhas)) continue;
+
+            Iterador it = lista_iterador(arestas_vizinhas);
+            while (iterador_tem_proximo(it)) {
+                Aresta* aresta = (Aresta*)iterador_proximo(it);
+                Node id_destino = aresta->destino;
+
+                int valor_qualquer;
+                if (hashGet(sg->nos, getNodeName(g_opaco, id_destino), &valor_qualquer)) {
+                    includeEdgeSDG(g_opaco, nomeSubgrafo, (Edge)aresta);
+                }
+            }
+            iterador_destroi(it);
+        }
+    }
+}
+
+Edge includeEdgeSDG(Graph g_opaco, char* nomeSubgrafo, Edge e_opaco) {
+    Grafo* g = (Grafo*)g_opaco;
+    Subgrafo* sg = getSubgraph(g, nomeSubgrafo);
+    if (!sg) return NULL;
+
+    char chave_ponteiro[32];
+    sprintf(chave_ponteiro, "%p", e_opaco);
+
+    hashPut(sg->arestas, chave_ponteiro, 1);
+    return e_opaco;
+}
+
+bool existsEdgeSDG(Graph g_opaco, char* nomeSubgrafo, Edge e_opaco) {
+    Grafo* g = (Grafo*)g_opaco;
+    Subgrafo* sg = getSubgraph(g, nomeSubgrafo);
+    if (!sg) return false;
+
+    char chave_ponteiro[32];
+    sprintf(chave_ponteiro, "%p", e_opaco);
+
+    int valor_qualquer;
+    return hashGet(sg->arestas, chave_ponteiro, &valor_qualquer);
+}
+
+void excludeEdgeSDG(Graph g_opaco, char* nomeSubgrafo, Edge e_opaco) {
+    Grafo* g = (Grafo*)g_opaco;
+    Subgrafo* sg = getSubgraph(g, nomeSubgrafo);
+    if (!sg) return;
+
+    char chave_ponteiro[32];
+    sprintf(chave_ponteiro, "%p", e_opaco);
+    hashRemove(sg->arestas, chave_ponteiro);
+}
+
+void adjacentEdgesSDG(Graph g_opaco, char* nomeSubgrafo, Node node, Lista arestasAdjacentes) {
+    Grafo* g = (Grafo*)g_opaco;
+    Subgrafo* sg = getSubgraph(g, nomeSubgrafo);
+    if (!sg) return;
+
+    Lista arestas_totais = g->adjacencia[node];
+    if (lista_vazia(arestas_totais)) return;
+
+    Iterador it = lista_iterador(arestas_totais);
+    while (iterador_tem_proximo(it)) {
+        Aresta* aresta_atual = (Aresta*)iterador_proximo(it);
+        
+        if (existsEdgeSDG(g_opaco, nomeSubgrafo, (Edge)aresta_atual)) {
+            lista_insere(arestasAdjacentes, aresta_atual);
+        }
+    }
+    iterador_destroi(it);
 }
