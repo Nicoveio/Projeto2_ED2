@@ -166,7 +166,7 @@ Info getInfoSmuT(SmuTreap t, NodeSmu n);
  * Retorna a informacao associada ao no' n 
  */
 
-Info getBoundingBoxSmuT(SmuTreap t, NodeSmu n, double *x, double *y, double *w, double *h);
+void getBoundingBoxSmuT(SmuTreap t, NodeSmu n, double *x, double *y, double *w, double *h);
 /* 
  * Retorna o bounding box associado ao no' n 
  */

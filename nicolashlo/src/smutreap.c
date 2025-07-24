@@ -315,14 +315,15 @@ Info getInfoSmuT(SmuTreap t, NodeSmu n){
     return ((NodeST*)n)->info;
 }
 
-Info getBoundingBoxSmuT(SmuTreap t, NodeSmu n, double *x, double *y, double *w, double *h){
-    if (n==NULL)return NULL;
+void getBoundingBoxSmuT(SmuTreap t, NodeSmu n, double *x, double *y, double *w, double *h){
+    if (n==NULL)return;
 
     NodeST* no = (NodeST*)n;
     *x = no->bb->x1;
     *y = no->bb->y1;
     *w = no->bb->x2 - no->bb->x1;
     *h = no->bb->y2 - no->bb->y1;
+    return;
 }
 
 
@@ -345,8 +346,6 @@ void buscaNosDentro(SmuTreap t, NodeST* no, double x1, double y1, double x2, dou
     }
 
     if (no->x >= x1 && no->x <= x2 && no->y >= y1 && no->y <= y2) {
-    double promotionRate = ((SmuTreapImp*)t)->promotionRate;
-    //promoteNodeSmu(t, (NodeSmu)no, promotionRate);
         lista_insere(L, (Elemento) no);
         *encontrou = true;
     }
@@ -374,10 +373,7 @@ bool buscaInfosDentro(NodeST* no, SmuTreap t, double x1, double y1, double x2, d
     if (intersecta(no->bb, x1, y1, x2, y2)) {
 
         if (f(t, no, no->info, x1, y1, x2, y2)) {
-            double promotionRate = ((SmuTreapImp*)t)->promotionRate;
-            SmuTreapImp* arvore = (SmuTreapImp*)t;
             no->hits++;            
-            /*promoteNodeSmu(t, (NodeSmu)no, promotionRate);*/
             lista_insere(L, (Elemento)no);
             achou = true;
         }
@@ -419,8 +415,6 @@ bool atingidosAux(SmuTreapImp* t, NodeST* no, double x, double y, FpontoInternoA
 
  
     if (f((SmuTreap)t, (NodeSmu)no, no->info, x, y)) {
-        double promotionRate = ((SmuTreapImp*)t)->promotionRate;
-       // promoteNodeSmu(t, no, promotionRate);
         lista_insere(L, (Elemento)no); 
         *encontrou = true;
     }
