@@ -75,7 +75,7 @@ int main(int argc, char *argv[]) {
         caminho_svg_saida = getCaminhoSvgConsulta(params);
         caminho_txt_saida = getCaminhoTxtConsulta(params);
 
-        ResultadosConsulta resultados = processaQry(g, lista_de_quadras, caminho_qry, caminho_txt_saida);
+        ResultadosConsulta resultados = processaQry(g, lista_de_quadras, caminho_qry, caminho_txt_saida, calculaCustoAresta);
         
         if (resultados) { 
             gerarSvgFinal(g, lista_de_quadras, resultados, caminho_svg_saida);
