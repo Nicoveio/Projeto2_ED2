@@ -1,10 +1,10 @@
-// Arquivo: qry.c
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
 #include <stdint.h>
-
+#include <math.h>
+#include <float.h>
 #include "qry.h"
 #include "graph.h"
 #include "lista.h"
@@ -12,6 +12,8 @@
 #include "utils.h"
 #include "svg.h"
 #include "geo.h" 
+
+#define INFINITO DBL_MAX
 
 typedef struct {
     char cep[50];
@@ -23,7 +25,14 @@ typedef struct {
     double x;
     double y;
     bool definido; 
-} Coordenadas;
+} CoordenadasReg;
+
+typedef enum {
+    TIPO_MARCADOR_O,
+    TIPO_CAMINHO,
+    TIPO_RETANGULO_ALAGAMENTO
+
+} TipoElementoVisual;
 
 typedef struct {
     char nome[50];
@@ -31,24 +40,120 @@ typedef struct {
     Lista caminho_rapido;
 } Percurso;
 
+typedef struct {
+    char registrador[8];
+    double x;
+    double y;
+    char face;
+} MarcadorO;
+
+typedef struct {
+    TipoElementoVisual tipo;
+    void* dados; 
+} ElementoVisual;
+
+typedef struct {
+    Lista elementos_para_desenhar;
+} ResultadosConsultaImp;
+
+static Quadra* encontrarQuadraPorCep(Lista lista_de_quadras, const char* cep) {
+    if (!lista_de_quadras || !cep) return NULL;
+
+    Iterador it = lista_iterador(lista_de_quadras);
+    while (iterador_tem_proximo(it)) {
+        Quadra* q = (Quadra*)iterador_proximo(it);
+        if (strcmp(q->cep, cep) == 0) {
+            iterador_destroi(it);
+            return q; 
+        }
+    }
+    iterador_destroi(it);
+    return NULL; 
+}
 
 
-void processaQry(Graph g, Lista quadras, const char* caminho_qry, const char* caminho_svg_saida, const char* caminho_txt_saida) {
+static CoordenadasReg calcularCoordenada(Quadra* q, char face, double num) {
+    CoordenadasReg c = {0, 0, false};
+    if (!q) return c;
+    c.definido = true;
+    
+    // Bússola do projeto: N=Baixo, S=Cima, L=Esquerda, O=Direita
+    switch (face) {
+        case 'N': // Norte (borda de BAIXO) -> Face Horizontal
+        case 'n':
+            c.x = q->x + num;     // Varia em X
+            c.y = q->y + q->h;    // Y é fixo (na borda de baixo)
+            break;
+
+        case 'S': // Sul (borda de CIMA) -> Face Horizontal
+        case 's':
+            c.x = q->x + num;     // Varia em X
+            c.y = q->y;           // Y é fixo (na borda de cima)
+            break;
+
+        case 'L': // Leste (borda da ESQUERDA) -> Face Vertical
+        case 'l':
+            c.x = q->x;           // X é fixo
+            c.y = q->y + num;     // Varia em Y
+            break;
+
+        case 'O': // Oeste (borda da DIREITA) -> Face Vertical
+        case 'o':
+            c.x = q->x + q->w;    // X é fixo
+            c.y = q->y + num;     // Varia em Y
+            break;
+    }
+    return c;
+}
+
+
+static void executaArrobaO(const char* linha, Lista quadras, CoordenadasReg* regs, Lista elementos_visuais, FILE* txt) {
+    char reg_str[4], cep[50], face_str[2];
+    double num;
+    sscanf(linha, "@o? %s %s %s %lf", reg_str, cep, face_str, &num);
+    
+    fprintf(txt, "[@o?*]\n");
+    fprintf(txt, "\tCEP:%s Face:%s Num:%.2lf\n", cep, face_str, num);
+
+    Quadra* q_alvo = encontrarQuadraPorCep(quadras, cep);
+    if (q_alvo) {
+        CoordenadasReg coord = calcularCoordenada(q_alvo, face_str[0], num);
+        int indice_reg = atoi(reg_str + 1);
+        if (indice_reg >= 0 && indice_reg <= 10) {
+            regs[indice_reg] = coord;
+            fprintf(txt, "\tRegistrador %s -> Coordenada (%.2f, %.2f)\n", reg_str, coord.x, coord.y);
+            MarcadorO* marcador = malloc(sizeof(MarcadorO));
+            strcpy(marcador->registrador, reg_str);
+            marcador->x = coord.x;
+            marcador->y = coord.y;
+            marcador->face = face_str[0];
+
+            ElementoVisual* el_visual = malloc(sizeof(ElementoVisual));
+            el_visual->tipo = TIPO_MARCADOR_O;
+            el_visual->dados = marcador;
+            lista_insere(elementos_visuais, el_visual);
+        }
+    } else {
+        fprintf(txt, "\tERRO: CEP '%s' não encontrado.\n", cep);
+    }
+}
+ResultadosConsulta processaQry(Graph g, Lista quadras, const char* caminho_qry, const char* caminho_txt_saida) {
     FILE* arquivo_qry = fopen(caminho_qry, "r");
     FILE* arquivo_txt = fopen(caminho_txt_saida, "w");
     if (!arquivo_qry || !arquivo_txt) {
         fprintf(stderr, "ERRO: Não foi possível abrir os arquivos de consulta ou de saída de texto.\n");
         if (arquivo_qry) fclose(arquivo_qry);
         if (arquivo_txt) fclose(arquivo_txt);
-        return;
+        return NULL;
     }
 
 
-    Coordenadas registradores[11];
+    CoordenadasReg registradores[11];
     for (int i = 0; i < 11; i++) registradores[i].definido = false;
 
+    ResultadosConsultaImp* resultados = malloc(sizeof(ResultadosConsultaImp));
     hashTable tabela_de_percursos = createHashTable(29);
-    Lista elementos_para_desenhar = lista_cria();
+    resultados->elementos_para_desenhar = lista_cria();
     
     char buffer_linha[1024];
     while (fgets(buffer_linha, sizeof(buffer_linha), arquivo_qry) != NULL) {
@@ -61,26 +166,12 @@ void processaQry(Graph g, Lista quadras, const char* caminho_qry, const char* ca
 
         // COMANDO @o? 
         if (strncmp(buffer_linha, "@o?", 3) == 0) {
-            char reg_str[4], cep[50], face_str[2];
-            double num;
-            sscanf(buffer_linha, "@o? %s %s %s %lf", reg_str, cep, face_str, &num);
-            
-            Quadra* q_alvo = encontrarQuadraPorCep(quadras, cep);
-            if (q_alvo) {
-                Coordenadas coord = calcularCoordenada(q_alvo, face_str[0], num);
-                int indice_reg = atoi(reg_str + 1);
-                if (indice_reg >= 0 && indice_reg <= 10) {
-                    registradores[indice_reg] = coord;
-                    registradores[indice_reg].definido = true;
-                    fprintf(arquivo_txt, "  -> Coordenada (%.2f, %.2f) armazenada em %s\n", coord.x, coord.y, reg_str);
-                    //  Adicionar o marcador @o? à lista de 'elementos_para_desenhar'
-                }
-            } else {
-                fprintf(arquivo_txt, "  -> ERRO: CEP '%s' não encontrado.\n", cep);
-            }
+             executaArrobaO(buffer_linha, quadras, registradores, resultados->elementos_para_desenhar, arquivo_txt);
         
         //  COMANDO alag
         } else if (strncmp(buffer_linha, "alag", 4) == 0) {
+            printf("processa alag simulação");
+            fprintf(arquivo_txt, "  -> Comando 'alag' identificado, mas não implementado.\n");
 
             //'Parsear' n, x, y, w, h da linha.
             //Usar a SmuTreap (getNodeSmusDentroRegiaoSmuT?) para encontrar os vértices na área.
@@ -91,6 +182,8 @@ void processaQry(Graph g, Lista quadras, const char* caminho_qry, const char* ca
 
         // COMANDO dren 
         } else if (strncmp(buffer_linha, "dren", 4) == 0) {
+            printf("processa dren simulação");
+            fprintf(arquivo_txt, "  -> Comando 'dren' identificado, mas não implementado.\n");
             //Parsear 'n' da linha.
             //Recuperar a lista de arestas associadas ao 'n' do alagamento.
             //Chamar enableEdge para cada uma.
@@ -98,6 +191,8 @@ void processaQry(Graph g, Lista quadras, const char* caminho_qry, const char* ca
 
         //  COMANDO sg 
         } else if (strncmp(buffer_linha, "sg", 2) == 0) {
+            printf("processa sg simulação");
+            fprintf(arquivo_txt, "  -> Comando 'sg' identificado, mas não implementado.\n");
             //Parsear nome, x, y, w, h da linha.
             //Usar a SmuTreap para encontrar os vértices na área?
             //Chamar createSubgraphDG do graph.c.
@@ -105,6 +200,8 @@ void processaQry(Graph g, Lista quadras, const char* caminho_qry, const char* ca
 
         // COMANDO p? 
         } else if (strncmp(buffer_linha, "p?", 2) == 0) {
+            printf("processa p?  simulação");
+            fprintf(arquivo_txt, "  -> Comando 'p?' identificado, mas não implementado.\n");
             //parsear np, nome_subgrafo, reg1, reg2.
             //Pegar as coordenadas dos registradores.
             //Chamar encontrarNoMaisProximo para obter os IDs de início e fim.
@@ -115,10 +212,14 @@ void processaQry(Graph g, Lista quadras, const char* caminho_qry, const char* ca
 
         // COMANDO join 
         } else if (strncmp(buffer_linha, "join", 4) == 0) {
+            printf("processa join simulação");
+            fprintf(arquivo_txt, "  -> Comando 'join' identificado, mas não implementado.\n");
             //1. Semelhante a p?
 
         // COMANDO shw 
         } else if (strncmp(buffer_linha, "shw", 3) == 0) {
+            printf("processa shw simulação");
+            fprintf(arquivo_txt, "  -> Comando 'shw' identificado, mas não implementado.\n");
             // Parsear np, cmc, cmr.
             // Buscar o Percurso na 'tabela_de_percursos' pela chave 'np'.
             // Adicionar o percurso e suas cores à lista 'elementos_para_desenhar'.
@@ -130,8 +231,30 @@ void processaQry(Graph g, Lista quadras, const char* caminho_qry, const char* ca
     printf("Processamento de consultas concluído. Gerando SVG final...\n");
 
     hashTableDestroy(tabela_de_percursos);
-    lista_libera(elementos_para_desenhar);
 
     fclose(arquivo_qry);
     fclose(arquivo_txt);
+    return (ResultadosConsulta)resultados;
+}
+
+void liberaResultadosConsulta(ResultadosConsulta res) {
+    if (!res) return;
+    ResultadosConsultaImp* resultados = (ResultadosConsultaImp*)res;
+    
+    Iterador it = lista_iterador(resultados->elementos_para_desenhar);
+    while(iterador_tem_proximo(it)) {
+        ElementoVisual* el = (ElementoVisual*)iterador_proximo(it);
+        free(el->dados); 
+        free(el);      
+    }
+    iterador_destroi(it);
+    lista_libera(resultados->elementos_para_desenhar);
+    free(resultados);
+}
+
+
+Lista getElementosParaDesenhar(ResultadosConsulta res) {
+    if (!res) return NULL;
+    ResultadosConsultaImp* resultados = (ResultadosConsultaImp*)res;
+    return resultados->elementos_para_desenhar;
 }

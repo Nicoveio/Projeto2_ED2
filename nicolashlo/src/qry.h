@@ -1,4 +1,3 @@
-// Arquivo: qry.h
 #ifndef QRY_H
 #define QRY_H
 
@@ -22,6 +21,14 @@ typedef void* ResultadosConsulta;
  * responsável por liberar esta estrutura.
  */
 ResultadosConsulta processaQry(Graph g, Lista quadras, const char* caminho_qry, const char* caminho_txt_saida);
+
+/**
+ * Obtém a lista de elementos visuais a serem desenhados a partir de
+ * uma estrutura de resultados de consulta.
+ * @param resultados O ponteiro opaco para a estrutura de resultados.
+ * @return A Lista de elementos visuais.
+ */
+Lista getElementosParaDesenhar(ResultadosConsulta resultados);
 
 /**
  * Libera a memória da estrutura de resultados da consulta.
