@@ -34,8 +34,8 @@ typedef enum {
     TIPO_MARCADOR_O,
     TIPO_CAMINHO,
     TIPO_LINHA_INACESSIVEL,
-    TIPO_RETANGULO_ALAGAMENTO
-
+    TIPO_RETANGULO_ALAGAMENTO,
+    TIPO_RETANGULO_SUBGRAFO
 } TipoElementoVisual;
 
 typedef struct {
@@ -97,6 +97,10 @@ typedef struct {
     int id;
     Lista arestas_desabilitadas;
 } InfoAlagamento;
+
+typedef struct {
+    double x, y, w, h;
+} RetanguloSubgrafo;
 
 static Quadra* encontrarQuadraPorCep(Lista lista_de_quadras, const char* cep) {
     if (!lista_de_quadras || !cep) return NULL;
@@ -345,7 +349,7 @@ static void executaShw(const char* linha, Graph g, Percurso** vestiario, hashTab
         }
         printf("DEBUG: Percurso é ACESSÍVEL. Caminho curto tem %d nós. Caminho rápido tem %d nós.\n",
         lista_tamanho(p->caminho_curto), lista_tamanho(p->caminho_rapido));
-               double base_duration = 8.0;
+               double base_duration = 15.0;
         double speed_factor = 1.5; 
         double tempo_curto = calcularCustoTotalPercurso(g, p->caminho_curto, CRITERIO_TEMPO, funcCusto);
         double tempo_rapido = calcularCustoTotalPercurso(g, p->caminho_rapido, CRITERIO_TEMPO, funcCusto);
@@ -502,6 +506,7 @@ static void executaDren(const char* linha, Graph g, ResultadosConsultaImp* resul
 
             while (iterador_tem_proximo(it)) {
                 Edge aresta = (Edge)iterador_proximo(it);
+                enableEdge(g, aresta);
                 Node origem = getFromNode(g, aresta);
                 Node destino = getToNode(g, aresta);
                 fprintf(txt, "\t  -> %s -> %s\n", getNodeName(g, origem), getNodeName(g, destino));
@@ -513,6 +518,103 @@ static void executaDren(const char* linha, Graph g, ResultadosConsultaImp* resul
     } else {
         fprintf(txt, "\tERRO: Região de alagamento n=%d não encontrada.\n", n);
     }
+}
+
+static void executaSg(const char* linha, Graph g, Lista elementos_visuais, FILE* txt) {
+    char nome_sg[50];
+    double x, y, w, h;
+    sscanf(linha, "sg %s %lf %lf %lf %lf", nome_sg, &x, &y, &w, &h);
+    fprintf(txt, "[sg*]\n\tCriando subgrafo '%s' na região (%.2f,%.2f) w=%.2f h=%.2f\n", nome_sg, x, y, w, h);
+    Lista nos_na_regiao = lista_cria();
+    getNodesInRegion(g, x, y, x + w, y + h, nos_na_regiao);
+
+    int num_nos = lista_tamanho(nos_na_regiao);
+    if (num_nos == 0) {
+        fprintf(txt, "\tAVISO: Nenhum nó encontrado na região para criar o subgrafo.\n");
+        lista_libera(nos_na_regiao);
+        return;
+    }
+    char** nomes_dos_nos = malloc(sizeof(char*) * num_nos);
+    int i = 0;
+    Iterador it = lista_iterador(nos_na_regiao);
+    while (iterador_tem_proximo(it)) {
+        NodeSmu no_da_arvore = (NodeSmu)iterador_proximo(it);
+        Node id_no = getNodeIdFromSmuTNode(g, no_da_arvore);
+        nomes_dos_nos[i++] = getNodeName(g, id_no);
+    }
+    iterador_destroi(it);
+    lista_libera(nos_na_regiao);
+    createSubgraphDG(g, nome_sg, nomes_dos_nos, num_nos, true);
+    free(nomes_dos_nos);
+
+    fprintf(txt, "\t-> Subgrafo '%s' criado com %d vértices.\n", nome_sg, num_nos);
+    RetanguloSubgrafo* rs = malloc(sizeof(RetanguloSubgrafo));
+    rs->x = x; rs->y = y; rs->w = w; rs->h = h;
+
+    ElementoVisual* el = malloc(sizeof(ElementoVisual));
+    el->tipo = TIPO_RETANGULO_SUBGRAFO;
+    el->dados = rs;
+    lista_insere(elementos_visuais, el);
+}
+
+static void executaJoin(const char* linha, Graph g, Percurso** vestiario, hashTable percursos, int* contador_fichas, FILE* txt, CalculaCustoAresta funcCusto) {
+    char np[50], np1[50], np2[50];
+    sscanf(linha, "join %s %s %s", np, np1, np2);
+    fprintf(txt, "[join*]\n\tJuntando percursos '%s' e '%s' no novo percurso '%s'.\n", np1, np2, np);
+
+    int id1, id2;
+    if (!hashGet(percursos, np1, &id1) || !hashGet(percursos, np2, &id2)) {
+        fprintf(txt, "\tERRO: Percurso '%s' ou '%s' não encontrado.\n", np1, np2);
+        return;
+    }
+
+    Percurso* p1 = vestiario[id1];
+    Percurso* p2 = vestiario[id2];
+
+    if (!p1->acessivel || !p2->acessivel) {
+        fprintf(txt, "\tERRO: Um dos percursos a ser juntado é inacessível.\n");
+        return;
+    }
+
+    // Pega o último nó do percurso 1 e o primeiro do percurso 2
+    Node fim_p1 = (Node)(uintptr_t)lista_get_ultimo(p1->caminho_curto);
+    Node inicio_p2 = (Node)(uintptr_t)lista_get_primeiro(p2->caminho_curto);
+
+    // Calcula o percurso de conexão
+    Lista conexao_curta = findPath(g, fim_p1, inicio_p2, CRITERIO_DISTANCIA, funcCusto);
+    Lista conexao_rapida = findPath(g, fim_p1, inicio_p2, CRITERIO_TEMPO, funcCusto);
+
+    if (lista_vazia(conexao_curta)) {
+        fprintf(txt, "\tERRO: Não há caminho entre o final de '%s' e o início de '%s'.\n", np1, np2);
+        lista_libera(conexao_rapida);
+        return;
+    }
+    Lista temp1_curto = lista_concatena(p1->caminho_curto, conexao_curta);
+    Lista final_curto = lista_concatena(temp1_curto, p2->caminho_curto);
+    lista_libera(temp1_curto);
+    lista_libera(conexao_curta);
+
+    Lista temp1_rapido = lista_concatena(p1->caminho_rapido, conexao_rapida);
+    Lista final_rapido = lista_concatena(temp1_rapido, p2->caminho_rapido);
+    lista_libera(temp1_rapido);
+    lista_libera(conexao_rapida);
+
+    // Cria e salva o novo percurso juntado
+    Percurso* novo_percurso = malloc(sizeof(Percurso));
+    strcpy(novo_percurso->nome, np);
+    novo_percurso->caminho_curto = final_curto;
+    novo_percurso->caminho_rapido = final_rapido;
+    novo_percurso->acessivel = true;
+    novo_percurso->no_inicio = p1->no_inicio;
+    novo_percurso->no_fim = p2->no_fim;
+
+    // Guarda o novo percurso no "vestiário"
+    int id_do_percurso = *contador_fichas;
+    vestiario[id_do_percurso] = novo_percurso;
+    hashPut(percursos, np, id_do_percurso);
+    (*contador_fichas)++;
+
+    fprintf(txt, "\t-> Percurso '%s' criado com sucesso.\n", np);
 }
 ResultadosConsulta processaQry(Graph g, Lista quadras, const char* caminho_qry, const char* caminho_txt_saida, CalculaCustoAresta funcCusto) {
     FILE* arquivo_qry = fopen(caminho_qry, "r");
@@ -557,20 +659,11 @@ ResultadosConsulta processaQry(Graph g, Lista quadras, const char* caminho_qry, 
              executaDren(buffer_linha, g, resultados, tabela_de_alagamentos, arquivo_txt);
         //  COMANDO sg 
         } else if (strncmp(buffer_linha, "sg", 2) == 0) {
-            printf("processa sg simulação");
-            fprintf(arquivo_txt, "  -> Comando 'sg' identificado, mas não implementado.\n");
-            //Parsear nome, x, y, w, h da linha.
-            //Usar a SmuTreap para encontrar os vértices na área?
-            //Chamar createSubgraphDG do graph.c.
-            //Adicionar o retângulo pontilhado à 'elementos_para_desenhar'.
-
-        // COMANDO p? 
+            executaSg(buffer_linha, g, resultados->elementos_para_desenhar, arquivo_txt);
         } else if (strncmp(buffer_linha, "p?", 2) == 0) {
            executaPInterrogacao(buffer_linha, g, registradores, tabela_de_percursos, arquivo_txt, funcCusto, resultados->vestiario_de_percursos, &resultados->contador_de_fichas);
         } else if (strncmp(buffer_linha, "join", 4) == 0) {
-            printf("processa join simulação");
-            fprintf(arquivo_txt, "  -> Comando 'join' identificado, mas não implementado.\n");
-            //1. Semelhante a p?
+            executaJoin(buffer_linha, g, resultados->vestiario_de_percursos, tabela_de_percursos, &resultados->contador_de_fichas, arquivo_txt, funcCusto);
 
         // COMANDO shw 
         } else if (strncmp(buffer_linha, "shw", 3) == 0) {
