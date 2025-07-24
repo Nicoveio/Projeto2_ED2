@@ -6,7 +6,8 @@
 #include "via.h"       
 #include "svg.h"        
 #include "graph.h"     
-#include "lista.h"      
+#include "lista.h"     
+#include "qry.h" 
 
 int main(int argc, char *argv[]) {
  
@@ -22,7 +23,11 @@ int main(int argc, char *argv[]) {
     // Obter os caminhos dos arquivos necessários
     char* caminho_geo = getCaminhoCompletoGeo(params);
     char* caminho_via = getCaminhoCompletoVia(params);
-    
+    char* caminho_qry = NULL;
+    char* caminho_svg_saida = NULL;
+    char* caminho_txt_saida = NULL;
+    char* caminho_svg_base = NULL;
+
     // Validação essencial: precisamos dos dois arquivos para o mapa base.
     if (caminho_geo == NULL || caminho_via == NULL) {
         fprintf(stderr, "Erro: Os parâmetros -f (arq.geo) e -v (arq.via) são obrigatórios para gerar o mapa.\n");
@@ -64,37 +69,37 @@ int main(int argc, char *argv[]) {
     printf("   [OK] Dados da cidade carregados com sucesso! (%d vértices)\n", getTotalNodes(g));
 
 
-    // PASSO 3: GERAR A SAÍDA (SEM PROCESSAR .QRY)
-    printf("\n3. Gerando SVG base (sem consultas)...\n");
-    
-    // Pega o nome do arquivo de saída .svg a partir do nome do .geo
-    char* caminho_svg_saida = getCaminhoSvgBase(params);
-    if (caminho_svg_saida == NULL) {
-        fprintf(stderr, "   [FALHOU] Não foi possível gerar o nome do arquivo de saída.\n");
-    } else {
-        // Chama a função do módulo svg para desenhar o mapa
-        gerarSvgBase(g, lista_de_quadras, caminho_svg_saida);
+       if (temArquivoQry(params)) {
+        printf("\n3. Processando arquivo de consultas...\n");
+        caminho_qry = getCaminhoCompletoQry(params);
+        caminho_svg_saida = getCaminhoSvgConsulta(params);
+        caminho_txt_saida = getCaminhoTxtConsulta(params);
+
+        ResultadosConsulta resultados = processaQry(g, lista_de_quadras, caminho_qry, caminho_txt_saida);
+        
+        if (resultados) { 
+            gerarSvgFinal(g, lista_de_quadras, resultados, caminho_svg_saida);
+            liberaResultadosConsulta(resultados);
+        }
     }
+    printf("\n4. Finalizando e liberando memória...\n");
 
-    printf("\n4. Finalizando e liberando toda a memória...\n");
-
-    // Libera a memória da lista de quadras e de cada quadra dentro dela
+    killDG(g);
     if (lista_de_quadras) {
         Iterador it = lista_iterador(lista_de_quadras);
         while(iterador_tem_proximo(it)) {
-            void* quadra = iterador_proximo(it);
-            free(quadra);
+            free(iterador_proximo(it));
         }
         iterador_destroi(it);
         lista_libera(lista_de_quadras);
     }
-
-    killDG(g);
+    
     
     free(caminho_geo);
     free(caminho_via);
+    free(caminho_qry);
     free(caminho_svg_saida);
-    destruirParametros(params);
+    free(caminho_txt_saida);
     
     printf("   [OK] Memória liberada.\n\n");
     printf("Execução concluída com sucesso!\n");
