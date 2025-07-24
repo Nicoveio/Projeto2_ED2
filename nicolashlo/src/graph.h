@@ -227,6 +227,14 @@ bool dfs(Graph g, Node node, procEdgeCallback treeEdge, procEdgeCallback forward
  */
 bool bfs(Graph g, Node node, procEdgeCallback discoverNode, void *extra);
 
+/*
+   Encontra o vértice do grafo cuja âncora (coordenada x,y) é a mais
+   próxima de um ponto geográfico arbitrário. A busca é otimizada
+   pela árvore espacial interna para ser mais eficiente que uma
+   verificação linear de todos os nós.
+*/
+Node findNearestNode(Graph g, double x, double y);
+
 
 /*
    Destroi o grafo "g".

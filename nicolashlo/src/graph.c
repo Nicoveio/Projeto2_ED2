@@ -305,7 +305,55 @@ Lista findPath(Graph g, Node inicio, Node fim, int criterio, CalculaCustoAresta 
     free(veioDe);
     free(gScore);
     return lista_cria();
-} 
+}
+
+Node findNearestNode(Graph g, double x, double y) {
+    Grafo* g0 = (Grafo*)g;
+    Lista nos_encontrados = lista_cria();
+    Node no_mais_proximo = -1;
+    
+    double raio_busca = 50.0;
+    bool encontrou_algum_no = false;
+
+    while (!encontrou_algum_no) {
+        double x1 = x - raio_busca;
+        double y1 = y - raio_busca;
+        double x2 = x + raio_busca;
+        double y2 = y + raio_busca;
+
+
+        encontrou_algum_no = getNodesDentroRegiaoSmuT(g0->localizacaoNos, x1, y1, x2, y2, nos_encontrados);
+
+        if (!encontrou_algum_no) {
+            raio_busca *= 2;
+        }
+    }
+
+    double menor_dist_quadrada = DBL_MAX;
+
+    Iterador it = lista_iterador(nos_encontrados);
+    while (iterador_tem_proximo(it)) {
+
+        NodeSmu no_da_arvore = (NodeSmu)iterador_proximo(it);
+        Info id_info = getInfoSmuT(g0->localizacaoNos, no_da_arvore);
+        Node id_atual = (Node)(uintptr_t)id_info;
+        Coordenadas* coord_no = (Coordenadas*)getNodeInfo(g, id_atual);
+        
+        double dx = coord_no->x - x;
+        double dy = coord_no->y - y;
+        double dist_quadrada = dx * dx + dy * dy;
+
+        if (dist_quadrada < menor_dist_quadrada) {
+            menor_dist_quadrada = dist_quadrada;
+            no_mais_proximo = id_atual;
+        }
+    }
+    iterador_destroi(it);
+    lista_libera(nos_encontrados);
+
+    return no_mais_proximo;
+}
+
 
 void killDG(Graph g){
 	if(!g)return;
