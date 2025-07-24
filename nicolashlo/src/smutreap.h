@@ -172,7 +172,7 @@ Info getBoundingBoxSmuT(SmuTreap t, NodeSmu n, double *x, double *y, double *w, 
  */
 
 
-bool getNodeSmusDentroRegiaoSmuT(SmuTreap t, double x1, double y1, double x2, double y2, Lista L);
+bool getNodesDentroRegiaoSmuT(SmuTreap t, double x1, double y1, double x2, double y2, Lista L);
 /* Insere na lista L os nos (NodeSmu) da arvore t cujas ancoras estao dentro da regiao 
    delimitada pelos pontos (x1,y1) e (x2,y2).
    Retorna falso, caso nao existam nos dentro da regiao; verdadeiro, caso contrario.
