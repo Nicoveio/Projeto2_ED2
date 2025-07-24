@@ -12,7 +12,12 @@
 #include <stdint.h>
 #include "utils.h"
 
+#define BRANCO 0
+#define CINZA 1
+#define PRETO 2
+
 #define INFINITO DBL_MAX
+#define MAX_SUBGRAFOS 50
 
 typedef struct{
 	double x;
@@ -43,6 +48,8 @@ typedef struct Grafo{
 	SmuTreap localizacaoNos;
 	hashTable nomeId;
 	hashTable subgrafos;
+    Subgrafo** vestiario_de_subgrafos; 
+    int contador_subgrafos;
 } Grafo;
 
 static Coordenadas* coordenadas_para_callback = NULL;
@@ -96,7 +103,8 @@ Graph createGraph(int nVert, bool directed, char* nomeGrafo){
 	g->localizacaoNos = newSmuTreap(1, 1.2, 0.1);
     setPrioridadeMax(g->localizacaoNos, 10000);
     g->subgrafos = createHashTable(13); 
-	if(!g->nomeId ||!g->localizacaoNos || !g->subgrafos ){
+    g->vestiario_de_subgrafos = calloc(MAX_SUBGRAFOS, sizeof(Subgrafo*));
+	if(!g->nomeId ||!g->localizacaoNos || !g->subgrafos || !g->vestiario_de_subgrafos ){
 		free(g->vertices);
 		free(g->adjacencia);
 		hashTableDestroy(g->nomeId);
@@ -422,13 +430,11 @@ void enableEdge(Graph g, Edge e) {
 
 bool isEdgeEnabled(Graph g, Edge e) {
     if (!e) {
-        // Uma aresta nula não pode estar habilitada.
         return false;
     }
-    // Faz o cast do ponteiro opaco 'Edge' para a struct interna 'Aresta'.
+
     Aresta* a = (Aresta*)e;
 
-    // Retorna o valor booleano do campo 'habilitada'.
     return a->habilitada;
 }
 
@@ -437,7 +443,6 @@ void incomingEdges(Graph g, Node node, Lista arestasEntrada) {
     Grafo* g0 = (Grafo*)g;
     if (node >= g0->nosInseridos) return;
 
-    // Percorre TODOS os nós para ver qual deles tem uma aresta para o 'node'
     for (Node i = 0; i < g0->nosInseridos; i++) {
         Lista arestas_saindo = g0->adjacencia[i];
         if (lista_vazia(arestas_saindo)) continue;
@@ -455,12 +460,11 @@ void incomingEdges(Graph g, Node node, Lista arestasEntrada) {
 
 Node getFromNode(Graph g, Edge e) {
     if (!g || !e) {
-        return -1; // Retorna um ID inválido se a entrada for nula
+        return -1; 
     }
     Grafo* g0 = (Grafo*)g;
 
-    // A única forma de encontrar a origem é percorrer as listas de adjacência
-    // para ver qual delas contém a aresta 'e'.
+
     for (Node i = 0; i < g0->nosInseridos; i++) {
         Lista arestas_saindo = g0->adjacencia[i];
         if (lista_vazia(arestas_saindo)) {
@@ -472,10 +476,8 @@ Node getFromNode(Graph g, Edge e) {
             // Pega o ponteiro da aresta na lista
             Edge aresta_atual = (Edge)iterador_proximo(it);
             
-            // Compara o ENDEREÇO de memória dos ponteiros
+
             if (aresta_atual == e) {
-                // Se encontramos a aresta 'e' na lista de adjacência do nó 'i',
-                // então 'i' é o nó de origem.
                 iterador_destroi(it);
                 return i;
             }
@@ -483,40 +485,221 @@ Node getFromNode(Graph g, Edge e) {
         iterador_destroi(it);
     }
 
-    return -1; // Retorna -1 se a aresta não for encontrada em nenhuma lista
+    return -1;
 }
 
-void killDG(Graph g){
-	if(!g)return;
-	Grafo *g0 = (Grafo*)g;
-	for(int i=0; i<g0->nosInseridos; i++){
-		Lista listaFonte = g0->adjacencia[i];
-		Iterador it = lista_iterador(listaFonte);
-		while(iterador_tem_proximo(it)==true){
-			Aresta *atual = (Aresta*)iterador_proximo(it);
-			free(atual->info);
-			free(atual);
-		}
-		iterador_destroi(it);
-		lista_libera(listaFonte);
-		free(g0->vertices[i].nome);
-		free(g0->vertices[i].coord);
-	}
-	free(g0->vertices);
-	free(g0->adjacencia);
-	hashTableDestroy(g0->nomeId);
-	killSmuTreap(g0->localizacaoNos);
-	hashTableDestroy(g0->subgrafos);
+void setNodeInfo(Graph g, Node node, Info info) {
+    Grafo* g0 = (Grafo*) g;
+    g0->vertices[node].nome = info;  
+}
 
-	free(g);
+
+void setEdgeInfo(Graph g, Edge e, Info info) {
+    Aresta* a = (Aresta*) e;
+    a->info = info;
+}
+
+void removeEdge(Graph g, Edge e) {
+    Aresta* a = (Aresta*) e;
+    a->habilitada = false;
+}
+
+
+bool isAdjacent(Graph g, Node from, Node to) {
+    Grafo* g0 = (Grafo*) g;
+    Lista adj = g0->adjacencia[from];
+    Iterador it = lista_iterador(adj);
+    while (iterador_tem_proximo(it)) {
+        Aresta* a = (Aresta*) iterador_proximo(it);
+        if (a->destino == to && a->habilitada) {
+            iterador_destroi(it);
+            return true;
+        }
+    }
+    iterador_destroi(it);
+    return false;
+}
+
+
+void adjacentNodes(Graph g, Node node, Lista nosAdjacentes) {
+    Grafo* g0 = (Grafo*) g;
+    Lista adj = g0->adjacencia[node];
+    Iterador it = lista_iterador(adj);
+    while (iterador_tem_proximo(it)) {
+        Aresta* a = (Aresta*) iterador_proximo(it);
+        if (a->habilitada) {
+            lista_insere(nosAdjacentes, (void*)(intptr_t)a->destino);
+        }
+    }
+    iterador_destroi(it);
+}
+
+
+void getNodeNames(Graph g, Lista nomesNodes) {
+    Grafo* g0 = (Grafo*) g;
+    for (int i = 0; i < g0->nosInseridos; i++) {
+        lista_insere(nomesNodes, g0->vertices[i].nome);
+    }
+}
+
+
+void getEdges(Graph g, Lista arestas) {
+    Grafo* g0 = (Grafo*) g;
+    for (int i = 0; i < g0->maxNos; i++) {
+        Lista adj = g0->adjacencia[i];
+        Iterador it = lista_iterador(adj);
+        while (iterador_tem_proximo(it)) {
+            lista_insere(arestas, iterador_proximo(it));
+        }
+        iterador_destroi(it);
+    }
+}
+
+static void dfs_visit(Graph g, int u, int *cor,
+                      procEdgeCallback treeEdge,
+                      procEdgeCallback forwardEdge,
+                      procEdgeCallback returnEdge,
+                      procEdgeCallback crossEdge,
+                      void *extra) {
+    Grafo *g0 = (Grafo *)g;
+    cor[u] = CINZA;
+
+    Iterador it = lista_iterador(g0->adjacencia[u]);
+    while (iterador_tem_proximo(it)) {
+        Aresta *a = (Aresta *)iterador_proximo(it);
+        int v = a->destino;
+
+        if (cor[v] == BRANCO) {
+            if (treeEdge) treeEdge(g, (Edge)a, 0, 0, extra);  // passa a aresta e ints placeholder
+            dfs_visit(g, v, cor, treeEdge, forwardEdge, returnEdge, crossEdge, extra);
+        } else if (cor[v] == CINZA) {
+            if (returnEdge) returnEdge(g, (Edge)a, 0, 0, extra);
+        } else {
+            if (crossEdge) crossEdge(g, (Edge)a, 0, 0, extra);
+        }
+    }
+    iterador_destroi(it);
+    cor[u] = PRETO;
+}
+
+bool dfs(Graph g, Node node,
+         procEdgeCallback treeEdge,
+         procEdgeCallback forwardEdge,
+         procEdgeCallback returnEdge,
+         procEdgeCallback crossEdge,
+         dfsRestartedCallback newTree,
+         void *extra) {
+    Grafo *g0 = (Grafo *)g;
+
+    int *cor = calloc(g0->maxNos, sizeof(int));
+
+    for (int i = 0; i < g0->nosInseridos; i++) {
+        cor[i] = BRANCO;
+    }
+
+    for (int i = 0; i < g0->nosInseridos; i++) {
+        if (cor[i] == BRANCO) {
+            if (newTree) newTree(g, extra); 
+            dfs_visit(g, i, cor, treeEdge, forwardEdge, returnEdge, crossEdge, extra);
+        }
+    }
+
+    free(cor);
+    return true;
+}
+
+bool bfs(Graph g, Node node, procEdgeCallback discoverNode, void *extra) {
+    Grafo *g0 = (Grafo *)g;
+
+    int *cor = calloc(g0->maxNos, sizeof(int));
+    if (!cor) return false;
+
+    for (int i = 0; i < g0->nosInseridos; i++) {
+        cor[i] = BRANCO;
+    }
+
+    Fila fila = fila_cria();
+    if (!fila) {
+        free(cor);
+        return false;
+    }
+
+    cor[node] = CINZA;
+    fila_insere(fila, (Elemento)(intptr_t)node);
+
+    while (!fila_vazia(fila)) {
+        int u = (int)(intptr_t)fila_remove(fila);
+
+        Iterador it = lista_iterador(g0->adjacencia[u]);
+        while (iterador_tem_proximo(it)) {
+            Aresta *a = (Aresta *)iterador_proximo(it);
+            int v = a->destino;
+
+            if (cor[v] == BRANCO) {
+                cor[v] = CINZA;
+                fila_insere(fila, (Elemento)(intptr_t)v);
+
+                if (discoverNode) {
+                    discoverNode(g, (Edge)a, 0, 0, extra);
+                }
+            }
+        }
+        iterador_destroi(it);
+        cor[u] = PRETO;
+    }
+
+    fila_libera(fila);
+    free(cor);
+    return true;
+}
+
+
+
+
+void killDG(Graph g) {
+    if (!g) return;
+    Grafo* g0 = (Grafo*)g;
+    for (int i = 0; i < g0->nosInseridos; i++) {
+        Lista listaFonte = g0->adjacencia[i];
+        if (listaFonte) {
+            Iterador it = lista_iterador(listaFonte);
+            while (iterador_tem_proximo(it)) {
+                Aresta* atual = (Aresta*)iterador_proximo(it);
+                if (atual->info) free(atual->info); 
+                free(atual);                     
+            }
+            iterador_destroi(it);
+            lista_libera(listaFonte); 
+        }
+        
+        if (g0->vertices[i].nome) free(g0->vertices[i].nome);
+        if (g0->vertices[i].coord) free(g0->vertices[i].coord);
+    }
+
+    for (int i = 0; i < g0->contador_subgrafos; i++) {
+        Subgrafo* sg = g0->vestiario_de_subgrafos[i];
+        if (sg) {
+            free(sg->nome);
+            hashTableDestroy(sg->nos);
+            hashTableDestroy(sg->arestas);
+            free(sg);
+        }
+    }
+    
+    free(g0->vestiario_de_subgrafos);
+    hashTableDestroy(g0->subgrafos);
+    free(g0->vertices);
+    free(g0->adjacencia);
+    hashTableDestroy(g0->nomeId);
+    killSmuTreap(g0->localizacaoNos);
+
+    free(g0);
 }
 
 static Subgrafo* getSubgraph(Grafo* g, const char* nomeSubgrafo) {
-    Subgrafo* sg;
-    int sg_ptr_int;
-    if (hashGet(g->subgrafos, nomeSubgrafo, &sg_ptr_int)) {
-        sg = (Subgrafo*)(uintptr_t)sg_ptr_int;
-        return sg;
+    int id_subgrafo;
+    if (hashGet(g->subgrafos, nomeSubgrafo, &id_subgrafo)) {
+       return g->vestiario_de_subgrafos[id_subgrafo];
     }
     return NULL;
 }
@@ -529,8 +712,11 @@ void createSubgraphDG(Graph g_opaco, char* nomeSubgrafo, char* nomesVerts[], int
     sg->nos = createHashTable(proxPrimo(nVert));
     sg->arestas = createHashTable(proxPrimo(nVert * 4));
 
-    hashPut(g->subgrafos, nomeSubgrafo, (int)(uintptr_t)sg);
-
+    int id_subgrafo = g->contador_subgrafos;
+    g->vestiario_de_subgrafos[id_subgrafo] = sg;
+    hashPut(g->subgrafos, nomeSubgrafo, id_subgrafo); // Guarda o índice (int)
+    g->contador_subgrafos++;
+    
     for (int i = 0; i < nVert; i++) {
         Node id_no = getNode(g_opaco, nomesVerts[i]);
         if (id_no != -1) {
@@ -612,4 +798,105 @@ void adjacentEdgesSDG(Graph g_opaco, char* nomeSubgrafo, Node node, Lista aresta
         }
     }
     iterador_destroi(it);
+}
+
+void getAllNodesSDG(Graph g, char *nomeSubgrafo, Lista lstNodes) {
+    Grafo* g0 = (Grafo*) g;
+    int sg_val = 0;
+    if (!hashGet(g0->subgrafos, nomeSubgrafo, &sg_val)) return;
+    Subgrafo* sg = (Subgrafo*)(intptr_t) sg_val;
+
+    hashIterator it = hash_iterador(sg->nos);
+    while (hash_iterador_tem_proximo(it)) {
+        const char* nome = hash_iterador_proximo(it);
+        int no_id;
+        if (hashGet(g0->nomeId, nome, &no_id)) {
+            lista_insere(lstNodes, (void*)(intptr_t) no_id);
+        }
+    }
+    hash_finalizar_iterador(it);
+}
+
+void getAllEdgesSDG(Graph g, char *nomeSubgrafo, Lista lstEdges) {
+    Grafo* g0 = (Grafo*) g;
+    int sg_val = 0;
+    if (!hashGet(g0->subgrafos, nomeSubgrafo, &sg_val)) return;
+    Subgrafo* sg = (Subgrafo*)(intptr_t) sg_val;
+
+    hashIterator it = hash_iterador(sg->arestas);
+    while (hash_iterador_tem_proximo(it)) {
+        const char* id = hash_iterador_proximo(it);
+        int edge_val;
+        if (hashGet(sg->arestas, id, &edge_val)) {
+            Edge e = (Edge)(intptr_t) edge_val;
+            lista_insere(lstEdges, e);
+        }
+    }
+    hash_finalizar_iterador(it);
+}
+
+void incomingEdgesSDG(Graph g, char *nomeSubgrafo, Node node, Lista arestasEntrada) {
+    Grafo* g0 = (Grafo*) g;
+    int sg_val = 0;
+    if (!hashGet(g0->subgrafos, nomeSubgrafo, &sg_val)) return;
+    Subgrafo* sg = (Subgrafo*)(intptr_t) sg_val;
+
+    for (int i = 0; i < g0->maxNos; i++) {
+        Lista adj = g0->adjacencia[i];
+        Iterador it = lista_iterador(adj);
+        while (iterador_tem_proximo(it)) {
+            Aresta* a = (Aresta*) iterador_proximo(it);
+            int no_id;
+            if (a->destino == node && hashGet(sg->nos, g0->vertices[i].nome, &no_id)) {
+                lista_insere(arestasEntrada, a);
+            }
+        }
+        iterador_destroi(it);
+    }
+}
+
+Graph produceGraph(Graph g, char* nomeSubgrafo) {
+    Grafo* g0 = (Grafo*)g;
+    int sg_val = 0;
+    if (!hashGet(g0->subgrafos, nomeSubgrafo, &sg_val)) return NULL;
+    Subgrafo* sg = (Subgrafo*)(intptr_t) sg_val;
+
+    Graph novoGrafo = createGraph(g0->maxNos, false, NULL);
+    if (!novoGrafo) return NULL;
+
+    // Adiciona os nós do subgrafo
+    hashIterator itNos = hash_iterador(sg->nos);
+    while (hash_iterador_tem_proximo(itNos)) {
+        const char* nomeNo = hash_iterador_proximo(itNos);
+        int no_id;
+        if (hashGet(g0->nomeId, nomeNo, &no_id)) {
+            Coordenadas* coord = g0->vertices[no_id].coord;
+            addNode(novoGrafo, (char*)nomeNo, (Info)coord);
+        }
+    }
+    hash_finalizar_iterador(itNos);
+
+    hashIterator itArestas = hash_iterador(sg->arestas);
+    while (hash_iterador_tem_proximo(itArestas)) {
+        const char* chaveAresta = hash_iterador_proximo(itArestas);
+
+        char origemNome[256];
+        sscanf(chaveAresta, "%[^-]", origemNome);
+
+        int origemId = getNode(g0, origemNome);
+        if (origemId < 0) continue; 
+
+        int edge_val;
+        if (hashGet(sg->arestas, chaveAresta, &edge_val)) {
+            Edge e = (Edge)(intptr_t)edge_val;
+            Aresta* a = (Aresta*)e;
+            Node destino = a->destino;
+            Info infoAresta = a->info;
+
+            addEdge(novoGrafo, origemId, destino, infoAresta);
+        }
+    }
+    hash_finalizar_iterador(itArestas);
+
+    return novoGrafo;
 }

@@ -251,6 +251,11 @@ bool bfs(Graph g, Node node, procEdgeCallback discoverNode, void *extra);
    verificação linear de todos os nós.
 */
 Node findNearestNode(Graph g, double x, double y);
+
+/*
+   Preenche a lista arestasEntrada com todas as arestas que chegam ao nó especificado em node,
+   no grafo g. Não faz nada se g, node ou arestasEntrada forem inválidos.
+*/
 void incomingEdges(Graph g, Node node, Lista arestasEntrada);
 
 
