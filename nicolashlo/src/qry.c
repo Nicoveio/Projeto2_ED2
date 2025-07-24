@@ -15,6 +15,7 @@
 #include "via.h"
 
 #define INFINITO DBL_MAX
+#define MAX_PERCURSOS 300
 
 typedef struct {
     char cep[50];
@@ -31,6 +32,7 @@ typedef struct {
 typedef enum {
     TIPO_MARCADOR_O,
     TIPO_CAMINHO,
+    TIPO_LINHA_INACESSIVEL,
     TIPO_RETANGULO_ALAGAMENTO
 
 } TipoElementoVisual;
@@ -40,6 +42,8 @@ typedef struct {
     Lista caminho_curto;
     Lista caminho_rapido;
     bool acessivel;
+    Node no_inicio;
+    Node no_fim;
 } Percurso;
 
 typedef struct {
@@ -56,6 +60,8 @@ typedef struct {
 
 typedef struct {
     Lista elementos_para_desenhar;
+    Percurso** vestiario_de_percursos; 
+    int contador_de_fichas;  
 } ResultadosConsultaImp;
 
 typedef struct {
@@ -65,6 +71,18 @@ typedef struct {
     double comprimento;
     double velocidade_media;
 } InfoAresta;
+
+typedef struct {
+    Lista caminho; 
+    char cor[25];  
+    bool eh_curto; 
+    double duracao_animacao;
+} CaminhoVisual;
+
+typedef struct {
+    Node no_inicio;
+    Node no_fim;
+} LinhaInacessivel;
 
 static Quadra* encontrarQuadraPorCep(Lista lista_de_quadras, const char* cep) {
     if (!lista_de_quadras || !cep) return NULL;
@@ -207,7 +225,8 @@ static void escreverRelatorioPercurso(FILE* txt, Graph g, Lista caminho) {
     fprintf(txt, "\tVocê chegou ao seu destino no cruzamento: %s\n", getNodeName(g, no_anterior));
     iterador_destroi(it);
 }
-static void executaPInterrogacao(const char* linha, Graph g, CoordenadasReg* regs, hashTable percursos, FILE* txt, CalculaCustoAresta funcCusto) {
+static void executaPInterrogacao(const char* linha, Graph g, CoordenadasReg* regs, hashTable percursos, FILE* txt, CalculaCustoAresta funcCusto, Percurso** vestiario,
+ int* contador_fichas) {
     char np[50], nome_subgrafo[50], reg1_str[4], reg2_str[4];
     sscanf(linha, "p? %s %s %s %s", np, nome_subgrafo, reg1_str, reg2_str);
 
@@ -243,8 +262,14 @@ static void executaPInterrogacao(const char* linha, Graph g, CoordenadasReg* reg
     novo_percurso->caminho_curto = caminho_curto;
     novo_percurso->caminho_rapido = caminho_rapido;
     novo_percurso->acessivel = !lista_vazia(caminho_curto);
+    novo_percurso->no_inicio = no_inicio;
+    novo_percurso->no_fim = no_fim;
 
-    hashPut(percursos, np, (int)(uintptr_t)novo_percurso);
+    int id_do_percurso = *contador_fichas;
+    vestiario[id_do_percurso] = novo_percurso;
+    hashPut(percursos, np, id_do_percurso);
+    (*contador_fichas)++;
+
 
     if (novo_percurso->acessivel) {
         fprintf(txt, "\t-> Caminho encontrado! Detalhes salvos no percurso '%s'.\n", np);
@@ -253,6 +278,106 @@ static void executaPInterrogacao(const char* linha, Graph g, CoordenadasReg* reg
         fprintf(txt, "\t-> ATENÇÃO: Destino inacessível a partir da origem.\n");
     }
 }
+
+static double calcularCustoTotalPercurso(Graph g, Lista caminho, int criterio, CalculaCustoAresta funcCusto) {
+    if (lista_vazia(caminho)) {
+        return 0.0;
+    }
+
+    double custo_total = 0.0;
+    Node no_anterior = -1;
+    Iterador it = lista_iterador(caminho);
+
+    if (iterador_tem_proximo(it)) {
+        no_anterior = (Node)(uintptr_t)iterador_proximo(it);
+    }
+
+    while (iterador_tem_proximo(it)) {
+        Node no_atual = (Node)(uintptr_t)iterador_proximo(it);
+        Edge aresta = getEdge(g, no_anterior, no_atual);
+        if (aresta) {
+            custo_total += funcCusto(getEdgeInfo(g, aresta), criterio);
+        }
+        no_anterior = no_atual;
+    }
+
+    iterador_destroi(it);
+    return custo_total;
+}
+static void executaShw(const char* linha, Graph g, Percurso** vestiario, hashTable percursos, Lista elementos_visuais, FILE* txt, CalculaCustoAresta funcCusto) {
+    char np[50], cmc[25], cmr[25];
+    sscanf(linha, "shw %s %s %s", np, cmc, cmr);
+
+    fprintf(txt, "[shw*]\n\tExibindo percurso '%s' com cores: Curto='%s', Rápido='%s'\n", np, cmc, cmr);
+    
+    int id_do_percurso;
+    if (hashGet(percursos, np, &id_do_percurso)) {
+        printf("DEBUG: Percurso '%s' ENCONTRADO na tabela hash.\n", np); 
+        Percurso* p = vestiario[id_do_percurso];
+
+
+        if (!p->acessivel) {
+            printf("DEBUG: Percurso é INACESSÍVEL.\n");
+            fprintf(txt, "\tAVISO: O percurso '%s' é inacessível.\n", np);
+            LinhaInacessivel* linha_dados = malloc(sizeof(LinhaInacessivel));
+            linha_dados->no_inicio = p->no_inicio;
+            linha_dados->no_fim = p->no_fim;
+
+            ElementoVisual* el_visual = malloc(sizeof(ElementoVisual));
+            el_visual->tipo = TIPO_LINHA_INACESSIVEL;
+            el_visual->dados = linha_dados;
+            lista_insere(elementos_visuais, el_visual);
+            return;
+        }
+        printf("DEBUG: Percurso é ACESSÍVEL. Caminho curto tem %d nós. Caminho rápido tem %d nós.\n",
+        lista_tamanho(p->caminho_curto), lista_tamanho(p->caminho_rapido));
+               double base_duration = 8.0;
+        double speed_factor = 1.5; 
+        double tempo_curto = calcularCustoTotalPercurso(g, p->caminho_curto, CRITERIO_TEMPO, funcCusto);
+        double tempo_rapido = calcularCustoTotalPercurso(g, p->caminho_rapido, CRITERIO_TEMPO, funcCusto);
+        double duracao_curto;
+        double duracao_rapido;
+
+        if (tempo_rapido < tempo_curto) {
+            duracao_rapido = base_duration / speed_factor; // Mais rápido
+            duracao_curto = base_duration;                 // Mais lento
+        } else {
+            duracao_curto = base_duration / speed_factor;  // Mais rápido
+            duracao_rapido = base_duration;                  // Mais lento
+        }
+
+        if (p->caminho_curto && !lista_vazia(p->caminho_curto)) {
+            CaminhoVisual* cv_curto = malloc(sizeof(CaminhoVisual));
+            cv_curto->caminho = p->caminho_curto;
+            strcpy(cv_curto->cor, cmc);
+            cv_curto->eh_curto = true; 
+            cv_curto->duracao_animacao = duracao_curto;
+
+            ElementoVisual* el_curto = malloc(sizeof(ElementoVisual));
+            el_curto->tipo = TIPO_CAMINHO;
+            el_curto->dados = cv_curto;
+            lista_insere(elementos_visuais, el_curto);
+        }
+
+        if (p->caminho_rapido && !lista_vazia(p->caminho_rapido)) {
+            CaminhoVisual* cv_rapido = malloc(sizeof(CaminhoVisual));
+            cv_rapido->caminho = p->caminho_rapido;
+            strcpy(cv_rapido->cor, cmr);
+            cv_rapido->eh_curto = false; 
+            cv_rapido->duracao_animacao = duracao_rapido;
+
+            ElementoVisual* el_rapido = malloc(sizeof(ElementoVisual));
+            el_rapido->tipo = TIPO_CAMINHO;
+            el_rapido->dados = cv_rapido;
+            lista_insere(elementos_visuais, el_rapido);
+        }
+
+    } else {
+        printf("DEBUG: Percurso '%s' NÃO FOI ENCONTRADO na tabela hash.\n", np);
+        fprintf(txt, "\tERRO: Percurso '%s' não encontrado.\n", np);
+    }
+}
+
 ResultadosConsulta processaQry(Graph g, Lista quadras, const char* caminho_qry, const char* caminho_txt_saida, CalculaCustoAresta funcCusto) {
     FILE* arquivo_qry = fopen(caminho_qry, "r");
     FILE* arquivo_txt = fopen(caminho_txt_saida, "w");
@@ -268,9 +393,10 @@ ResultadosConsulta processaQry(Graph g, Lista quadras, const char* caminho_qry, 
     for (int i = 0; i < 11; i++) registradores[i].definido = false;
 
     ResultadosConsultaImp* resultados = malloc(sizeof(ResultadosConsultaImp));
-    hashTable tabela_de_percursos = createHashTable(29);
     resultados->elementos_para_desenhar = lista_cria();
-    
+    resultados->vestiario_de_percursos = calloc(MAX_PERCURSOS, sizeof(Percurso*));
+    resultados->contador_de_fichas = 0;
+    hashTable tabela_de_percursos = createHashTable(29);
     char buffer_linha[1024];
     while (fgets(buffer_linha, sizeof(buffer_linha), arquivo_qry) != NULL) {
         buffer_linha[strcspn(buffer_linha, "\r\n")] = '\0';
@@ -316,7 +442,7 @@ ResultadosConsulta processaQry(Graph g, Lista quadras, const char* caminho_qry, 
 
         // COMANDO p? 
         } else if (strncmp(buffer_linha, "p?", 2) == 0) {
-            executaPInterrogacao(buffer_linha, g, registradores, tabela_de_percursos, arquivo_txt, funcCusto);
+           executaPInterrogacao(buffer_linha, g, registradores, tabela_de_percursos, arquivo_txt, funcCusto, resultados->vestiario_de_percursos, &resultados->contador_de_fichas);
         } else if (strncmp(buffer_linha, "join", 4) == 0) {
             printf("processa join simulação");
             fprintf(arquivo_txt, "  -> Comando 'join' identificado, mas não implementado.\n");
@@ -324,15 +450,14 @@ ResultadosConsulta processaQry(Graph g, Lista quadras, const char* caminho_qry, 
 
         // COMANDO shw 
         } else if (strncmp(buffer_linha, "shw", 3) == 0) {
-            printf("processa shw simulação");
-            fprintf(arquivo_txt, "  -> Comando 'shw' identificado, mas não implementado.\n");
-            // Parsear np, cmc, cmr.
-            // Buscar o Percurso na 'tabela_de_percursos' pela chave 'np'.
-            // Adicionar o percurso e suas cores à lista 'elementos_para_desenhar'.
+            printf("\nDEBUG: Comando 'shw' RECONHECIDO. Chamando executaShw...\n");
+            executaShw(buffer_linha, g, resultados->vestiario_de_percursos, tabela_de_percursos, resultados->elementos_para_desenhar, arquivo_txt, funcCusto);
         }
 
         fprintf(arquivo_txt, "\n");
     }
+    printf("DEBUG: Fim do processamento. Total de elementos para desenhar: %d\n",
+       lista_tamanho(resultados->elementos_para_desenhar));
 
     printf("Processamento de consultas concluído. Gerando SVG final...\n");
 
@@ -346,15 +471,28 @@ ResultadosConsulta processaQry(Graph g, Lista quadras, const char* caminho_qry, 
 void liberaResultadosConsulta(ResultadosConsulta res) {
     if (!res) return;
     ResultadosConsultaImp* resultados = (ResultadosConsultaImp*)res;
-    
+
     Iterador it = lista_iterador(resultados->elementos_para_desenhar);
     while(iterador_tem_proximo(it)) {
         ElementoVisual* el = (ElementoVisual*)iterador_proximo(it);
-        free(el->dados); 
-        free(el);      
+        free(el->dados);
+        free(el);
     }
     iterador_destroi(it);
     lista_libera(resultados->elementos_para_desenhar);
+
+
+    if (resultados->vestiario_de_percursos) {
+        for (int i = 0; i < resultados->contador_de_fichas; i++) {
+            if (resultados->vestiario_de_percursos[i]) {
+                lista_libera(resultados->vestiario_de_percursos[i]->caminho_curto);
+                lista_libera(resultados->vestiario_de_percursos[i]->caminho_rapido);
+                free(resultados->vestiario_de_percursos[i]);
+            }
+        }
+        free(resultados->vestiario_de_percursos);
+    }
+
     free(resultados);
 }
 

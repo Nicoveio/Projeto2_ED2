@@ -3,6 +3,7 @@
 #include <string.h>
 #include <math.h>
 #include <float.h>
+#include <stdint.h>
 
 #include "svg.h"
 #include "graph.h"
@@ -29,6 +30,7 @@ typedef struct {
 typedef enum {
     TIPO_MARCADOR_O,
     TIPO_CAMINHO,
+    TIPO_LINHA_INACESSIVEL,
     TIPO_RETANGULO_ALAGAMENTO
 
 } TipoElementoVisual;
@@ -43,6 +45,18 @@ typedef struct {
 typedef struct { 
     TipoElementoVisual tipo; 
     void* dados; } ElementoVisual;
+
+typedef struct {
+    Lista caminho; 
+    char cor[25];  
+    bool eh_curto; 
+    double duracao_animacao;
+} CaminhoVisual;
+
+typedef struct {
+    Node no_inicio;
+    Node no_fim;
+} LinhaInacessivel;
 
 
 // ====================================================================
@@ -194,6 +208,53 @@ static void desenharMarcadorO(FILE* arq, MarcadorO* marcador) {
                 marcador->y, marcador->registrador);
     }
 }
+static void desenharCaminho(FILE* arq, Graph g, CaminhoVisual* caminho_visual, int* path_id_counter) {
+    if (lista_vazia(caminho_visual->caminho)) return;
+
+    char path_string[16384] = "M ";
+    char temp[100];
+
+    // Define o deslocamento. O caminho curto fica um pouco à "esquerda/cima", o rápido um pouco à "direita/baixo".
+    double offset = caminho_visual->eh_curto ? -3.0 : 3.0;
+
+    Iterador it = lista_iterador(caminho_visual->caminho);
+    while(iterador_tem_proximo(it)) {
+        Node no_id = (Node)(uintptr_t)iterador_proximo(it);
+        Coordenadas* c = (Coordenadas*)getNodeInfo(g, no_id);
+        // Aplica o offset às coordenadas antes de adicioná-las à string
+        sprintf(temp, "%.2f,%.2f L ", c->x + offset, c->y + offset);
+        strcat(path_string, temp);
+    }
+    iterador_destroi(it);
+    path_string[strlen(path_string) - 2] = '\0';
+
+    char path_id[20];
+    sprintf(path_id, "path_%d", (*path_id_counter)++);
+    fprintf(arq, "  <svg:path id=\"%s\" d=\"%s\" stroke=\"%s\" stroke-width=\"8.0\" fill=\"none\" stroke-opacity=\"2.0\" />\n", 
+            path_id, path_string, caminho_visual->cor);
+
+    fprintf(arq, "  <svg:image href=\"https://www.uel.br/pessoal/bacarin/figs/eb.jpg\" width=\"40\" height=\"40\" transform=\"translate(-20,-20)\">\n");
+    fprintf(arq, "    <svg:animateMotion dur=\"%.2fs\" repeatCount=\"indefinite\">\n", caminho_visual->duracao_animacao);
+    fprintf(arq, "      <svg:mpath href=\"#%s\"/>\n", path_id);
+    fprintf(arq, "    </svg:animateMotion>\n");
+    fprintf(arq, "  </svg:image>\n");
+
+
+}
+static void desenharLinhaInacessivel(FILE* arq, Graph g, LinhaInacessivel* linha) {
+    if (!linha) return;
+
+    // Pega as coordenadas dos nós de início e fim
+    Coordenadas* coord_inicio = (Coordenadas*)getNodeInfo(g, linha->no_inicio);
+    Coordenadas* coord_fim = (Coordenadas*)getNodeInfo(g, linha->no_fim);
+
+    if (coord_inicio && coord_fim) {
+        // Desenha a linha pontilhada vermelha
+        fprintf(arq, "  <svg:line x1=\"%.2f\" y1=\"%.2f\" x2=\"%.2f\" y2=\"%.2f\" stroke=\"red\" stroke-width=\"2\" stroke-dasharray=\"5,5\" />\n",
+                coord_inicio->x, coord_inicio->y,
+                coord_fim->x, coord_fim->y);
+    }
+}
 
 void gerarSvgFinal(Graph g, Lista quadras, ResultadosConsulta res, const char* caminho_svg) {
     if (!caminho_svg) return;
@@ -248,21 +309,40 @@ void gerarSvgFinal(Graph g, Lista quadras, ResultadosConsulta res, const char* c
     fprintf(arquivo, "<svg:g id=\"mapa_base\">\n");
     desenharQuadras(arquivo, quadras);
     desenharRuasEVertices(arquivo, g);
+    fprintf(arquivo, "</svg:g>\n");
+    fprintf(arquivo, "<svg:g id=\"animacoes\">\n");
 
     fprintf(arquivo, "\n  \n");
     Lista elementos = getElementosParaDesenhar(res); // <-- A MUDANÇA
+    printf("DEBUG: A função gerarSvgFinal recebeu uma lista com %d elementos para desenhar.\n",lista_tamanho(elementos));
     if (elementos) {
         Iterador it = lista_iterador(elementos);
-        while(iterador_tem_proximo(it)) {
+        int path_id_counter = 0;
+        while(iterador_tem_proximo(it)){
             ElementoVisual* el = (ElementoVisual*)iterador_proximo(it);
-            if (el->tipo == TIPO_MARCADOR_O) {
+            switch (el->tipo) {
+                case TIPO_MARCADOR_O:{
                 desenharMarcadorO(arquivo, (MarcadorO*)el->dados);
-            }
-            // falta else if pros demais desenhos ...
-        }
-        iterador_destroi(it);
-    }
+                break;
+                }
 
+                case TIPO_CAMINHO:{
+                fprintf(arquivo, "<svg:g>\n"); 
+                desenharCaminho(arquivo, g, (CaminhoVisual*)el->dados, &path_id_counter);
+                fprintf(arquivo, "</svg:g>\n");
+                break;
+                }
+                case TIPO_LINHA_INACESSIVEL:{
+                desenharLinhaInacessivel(arquivo, g, (LinhaInacessivel*)el->dados);
+                break;
+                }
+
+
+            }
+
+        }
+
+}
     fprintf(arquivo, "</svg:g>\n");
     // --- 4. Escrever o Rodapé ---
     fprintf(arquivo, "</svg:svg>\n");
