@@ -20,7 +20,7 @@ typedef void* ResultadosConsulta;
  * elementos visuais a serem desenhados no SVG. O chamador é
  * responsável por liberar esta estrutura.
  */
-ResultadosConsulta processaQry(Graph g, Lista quadras, const char* caminho_qry, const char* caminho_txt_saida);
+ResultadosConsulta processaQry(Graph g, Lista quadras, const char* caminho_qry, const char* caminho_txt_saida, CalculaCustoAresta funcCusto);
 
 /**
  * Obtém a lista de elementos visuais a serem desenhados a partir de
